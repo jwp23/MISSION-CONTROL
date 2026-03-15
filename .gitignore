@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+._*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+dist/
+build/
+*.tgz
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Playwright
+.playwright-mcp/
+
+# Runtime state
+session-state.json
+
+# Local config (copy config.example.json to config.json and customize)
+config.json
+
+# Personal context (optional, not required to run)
+.claude/me.md
+.claude/voice.md
+.claude/team.md
+.claude/links.md
+
+# Secrets
+*.pem
+*.key
+credentials.json
