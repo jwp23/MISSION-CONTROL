@@ -25,7 +25,7 @@ Purpose: This file describes the project's technical foundation — hosting, lan
 - **Framework:** Express 4 with vanilla JS (no build step, no transpilation)
 - **Directory Structure:**
   - `server/` — Express server and API routes
-  - `public/` — Static frontend assets (HTML, CSS, React 18 loaded via CDN)
+  - `public/` — Static frontend assets (HTML, CSS, React 19 loaded via esm.sh CDN)
   - `config.example.json` — Default configuration template
 
 ---

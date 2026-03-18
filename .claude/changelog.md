@@ -11,6 +11,8 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ### Changed
 
+- Upgraded React from 18 to 19 (React 19 removed UMD builds; now loaded via esm.sh CDN + import maps)
+- Switched app.js from global destructuring to ESM imports for React
 - Upgraded minimum Node.js version from v18 to v24 LTS (v18 reached EOL April 2025)
 - Added `.nvmrc` pinning Node 24 for nvm/fnm users
 - Added `engines` field to `package.json` enforcing Node >=24.0.0

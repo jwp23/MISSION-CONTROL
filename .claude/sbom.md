@@ -11,6 +11,8 @@ Purpose: Lists all approved technologies, libraries, and dependencies with their
 | Runtime | Node.js | 24.x LTS | EOL policy — always track current LTS |
 | Server | Express | ^4.21.0 | Lightweight HTTP framework |
 | File watching | Chokidar | ^3.6.0 | Cross-platform fs.watch wrapper |
+| Frontend (CDN) | React | 19.x | UI library — loaded via esm.sh CDN (React 19 dropped UMD) |
+| Frontend (CDN) | React DOM | 19.x | React renderer — loaded via esm.sh CDN |
 
 ---
 

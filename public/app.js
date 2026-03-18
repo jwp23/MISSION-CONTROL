@@ -1,4 +1,5 @@
-const { useState, useEffect, useCallback } = React;
+import React, { useState, useEffect, useCallback } from "react";
+import { createRoot } from "react-dom/client";
 
 // --- Utility Functions ---
 
@@ -960,5 +961,5 @@ function App() {
 }
 
 // Mount
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const root = createRoot(document.getElementById('root'));
 root.render(<App />);
