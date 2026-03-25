@@ -311,13 +311,14 @@ app.get('/api/active', (req, res) => {
   }
 });
 
-// Restore a session via Ghostty
+// Restore a session in the configured terminal
 app.post('/api/restore/:sessionId', async (req, res) => {
   try {
     const { cwd } = req.body;
     if (!cwd) return res.status(400).json({ error: 'cwd is required' });
 
-    const result = await restore.restoreSession(req.params.sessionId, cwd);
+    const terminal = config.get().terminal || 'ghostty';
+    const result = await restore.restoreSession(req.params.sessionId, cwd, terminal);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
