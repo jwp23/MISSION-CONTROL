@@ -545,6 +545,7 @@ function EditableSummary({ sessionId, summary, onSave }) {
 
 function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onStatusChange, onSummaryEdit, showProject, onSelectProject }) {
   const [restoring, setRestoring] = useState(null);
+  const [restoreMsg, setRestoreMsg] = useState(null);
   const [copied, setCopied] = useState(null);
 
   const sorted = [...sessions].sort((a, b) => {
@@ -568,13 +569,21 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
     const cwd = sessionProjectPath || projectPath;
     if (!sessionId || !cwd) return;
     setRestoring(sessionId);
+    setRestoreMsg(null);
     fetch(`/api/restore/${sessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cwd })
     })
       .then(r => r.json())
-      .then(() => setTimeout(() => setRestoring(null), 2000))
+      .then(data => {
+        if (data.error) {
+          setRestoreMsg({ sessionId, type: 'error', text: data.error });
+        } else if (data.partial && data.resumeCommand) {
+          setRestoreMsg({ sessionId, type: 'partial', text: data.resumeCommand });
+        }
+        setTimeout(() => setRestoring(null), 2000);
+      })
       .catch(() => setRestoring(null));
   };
 
@@ -631,11 +640,27 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                   <button
                     className={`restore-btn ${restoring === s.sessionId ? 'restoring' : ''}`}
                     onClick={(e) => { e.stopPropagation(); handleRestore(s.sessionId, s.projectPath); }}
-                    title={`Resume session in Ghostty\n${s.sessionId}`}
+                    title={`Resume session\n${s.sessionId}`}
                     disabled={restoring === s.sessionId}
                   >
                     {restoring === s.sessionId ? '...' : 'Launch'}
                   </button>
+                  {restoreMsg && restoreMsg.sessionId === s.sessionId && (
+                    restoreMsg.type === 'error'
+                      ? <span className="restore-error" title={restoreMsg.text}>err</span>
+                      : <button
+                          className="restore-copy-btn"
+                          title={`Click to copy: ${restoreMsg.text}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(restoreMsg.text);
+                            setRestoreMsg({ ...restoreMsg, copied: true });
+                            setTimeout(() => setRestoreMsg(null), 1500);
+                          }}
+                        >
+                          {restoreMsg.copied ? 'copied!' : 'copy cmd'}
+                        </button>
+                  )}
                 )}
               </td>
               {showProject && (
