@@ -19,6 +19,28 @@ Purpose: This file defines what we are building and for whom.
 
 ---
 
+### Story 1: Subagent Usage Breakdown per Project
+
+**As a** developer reviewing a project's cost and activity,
+**I want to** see how many subagents were spawned and which models they used,
+**so that** I can understand the true scope of a session without digging into raw files.
+
+**Notes:**
+- Subagents are already discovered by the scanner and their metrics merged into parent sessions, but the count and per-model breakdown are not surfaced in the UI at all.
+- The presentation must not clutter the existing analysis section. Subagent data should integrate into existing surfaces rather than add new top-level charts or panels.
+- Subagent count is a per-session fact; model breakdown is useful at the project aggregate level.
+
+**Acceptance Criteria:**
+
+1. The session table shows a subagent count for each session that spawned at least one subagent (e.g., a small badge or plain numeric column). Sessions with no subagents show nothing (no zero, no dash — just blank).
+2. The project-level Rollup section (Tokens by Model) attributes tokens that originated from subagents vs. the parent session. Each model row shows parent and subagent token contributions so the user can see how much work subagents drove.
+3. No new top-level chart is added to the ChartsPanel. Subagent information must not widen or restructure the three-chart layout.
+4. The backend exposes subagent count per session. `mergeSubagentMetrics()` must increment a `subagentCount` field on the parent session so the API can return it without a separate call.
+5. At the project aggregate level, the API returns total subagent count so the Rollup can display it without client-side summation over all sessions.
+6. All new backend fields are covered by tests in `scanner.test.js`.
+
+---
+
 ## 3. The Look and Feel
 
 > Visual style, key screens, and UX patterns will be defined here.
