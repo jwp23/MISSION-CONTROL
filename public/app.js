@@ -636,32 +636,36 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                 )}
               </td>
               <td className="col-actions">
-                {s.sessionId && (<>
-                  <button
-                    className={`restore-btn ${restoring === s.sessionId ? 'restoring' : ''}`}
+                {s.sessionId && (() => {
+                  const msg = restoreMsg && restoreMsg.sessionId === s.sessionId ? restoreMsg : null;
+                  const isRestoring = restoring === s.sessionId;
+
+                  if (msg && msg.type === 'error') {
+                    return <button className="restore-btn restore-error-btn"
+                      title={msg.text}
+                      onClick={(e) => { e.stopPropagation(); setRestoreMsg(null); }}
+                    >Error</button>;
+                  }
+
+                  if (msg && msg.type === 'partial') {
+                    return <button className={`restore-btn restore-copy-btn${msg.copied ? ' copied' : ''}`}
+                      title={`Click to copy: ${msg.text}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(msg.text);
+                        setRestoreMsg({ ...msg, copied: true });
+                        setTimeout(() => setRestoreMsg(null), 2000);
+                      }}
+                    >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
+                  }
+
+                  return <button
+                    className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
                     onClick={(e) => { e.stopPropagation(); handleRestore(s.sessionId, s.projectPath); }}
                     title={`Resume session\n${s.sessionId}`}
-                    disabled={restoring === s.sessionId}
-                  >
-                    {restoring === s.sessionId ? '...' : 'Launch'}
-                  </button>
-                  {restoreMsg && restoreMsg.sessionId === s.sessionId && (
-                    restoreMsg.type === 'error'
-                      ? <span className="restore-error" title={restoreMsg.text}>err</span>
-                      : <button
-                          className="restore-copy-btn"
-                          title={`Click to copy: ${restoreMsg.text}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(restoreMsg.text);
-                            setRestoreMsg({ ...restoreMsg, copied: true });
-                            setTimeout(() => setRestoreMsg(null), 1500);
-                          }}
-                        >
-                          {restoreMsg.copied ? 'copied!' : 'copy cmd'}
-                        </button>
-                  )}
-                </>)}
+                    disabled={isRestoring}
+                  >{isRestoring ? '...' : 'Launch'}</button>;
+                })()}
               </td>
               {showProject && (
                 <td className="col-project">
