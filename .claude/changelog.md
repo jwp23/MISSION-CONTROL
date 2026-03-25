@@ -11,10 +11,15 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ### Added
 
-- Story 2: Configurable Terminal Emulator for Session Launch — PRD story, FRAGO, and beads epic `l2d` with 5 child issues (l2d.1–l2d.5) across 3 convoys
-  - Adds `terminal` config key (default: ghostty) for Linux terminal selection
-  - Supports ghostty, alacritty, cosmic-term, kitty
-  - Linux support first; macOS AppleScript path preserved
+- Story 2: Configurable Terminal Emulator for Session Launch — all 6 acceptance criteria implemented
+  - `config.example.json` accepts `terminal` key (default: `ghostty`)
+  - `restore.js` refactored with `TERMINALS` map, `buildLaunchArgs()` (pure), `findBinary()` (PATH check)
+  - Full-support terminals: ghostty, alacritty, kitty (spawn with `-e` or positional args)
+  - Partial-support terminals: cosmic-term (opens in project dir), zeditor (opens/focuses project)
+  - Partial terminals return `resumeCommand`; Launch button transitions to "Copy Cmd" (blue) for clipboard copy
+  - macOS + ghostty preserves existing AppleScript path; all others use cross-platform spawn
+  - POST `/api/restore` reads terminal from config, passes to `restoreSession()`
+  - 16 tests covering all terminals, platform routing, error paths, and PATH validation
 
 - Story 1: Subagent Usage Breakdown per Project — all 6 acceptance criteria implemented
   - `mergeSubagentMetrics()` increments `subagentCount` on parent session
