@@ -11,7 +11,13 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ### Added
 
-- Story 1: Subagent Usage Breakdown per Project — PRD story with 6 acceptance criteria
+- Story 1: Subagent Usage Breakdown per Project — all 6 acceptance criteria implemented
+  - `mergeSubagentMetrics()` increments `subagentCount` on parent session
+  - `aggregateSessions()` returns `totalSubagentCount` across sessions
+  - Session table has dedicated "Subs" column (sortable, blank when zero)
+  - Tokens-by-Model rollup shows parent vs. subagent token attribution per model row
+  - `subagentTokensByModel` tracked through merge and aggregation for attribution
+  - 14 tests covering all new backend fields and edge cases
 - Beads epic `lg8` with 5 child issues (lg8.1–lg8.5) and dependency chain for Story 1
 
 ### Fixed

@@ -138,6 +138,8 @@ const sessionCache = new Map();
  * Merge a subagent's parsed metrics into a parent session object.
  */
 function mergeSubagentMetrics(parent, subagent) {
+  parent.subagentCount = (parent.subagentCount || 0) + 1;
+
   const pm = parent.metrics;
   const sm = subagent.metrics;
 
@@ -151,6 +153,14 @@ function mergeSubagentMetrics(parent, subagent) {
   pm.toolCallCount += sm.toolCallCount;
   pm.messageCount += sm.messageCount;
 
+  if (!pm.subagentTokensByModel) pm.subagentTokensByModel = {};
+  if (!pm.subagentCountByModel) pm.subagentCountByModel = {};
+
+  // Count this subagent once per model it used
+  for (const model of subagent.models) {
+    pm.subagentCountByModel[model] = (pm.subagentCountByModel[model] || 0) + 1;
+  }
+
   for (const [model, tokens] of Object.entries(sm.tokensByModel)) {
     if (!pm.tokensByModel[model]) {
       pm.tokensByModel[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
@@ -160,6 +170,15 @@ function mergeSubagentMetrics(parent, subagent) {
     pm.tokensByModel[model].cacheRead += tokens.cacheRead;
     pm.tokensByModel[model].cacheWrite += tokens.cacheWrite;
     pm.tokensByModel[model].cost += tokens.cost;
+
+    if (!pm.subagentTokensByModel[model]) {
+      pm.subagentTokensByModel[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    }
+    pm.subagentTokensByModel[model].input += tokens.input;
+    pm.subagentTokensByModel[model].output += tokens.output;
+    pm.subagentTokensByModel[model].cacheRead += tokens.cacheRead;
+    pm.subagentTokensByModel[model].cacheWrite += tokens.cacheWrite;
+    pm.subagentTokensByModel[model].cost += tokens.cost;
   }
 
   // Merge model list
@@ -271,11 +290,15 @@ function aggregateSessions(sessions) {
     totalToolCalls: 0,
     totalMessages: 0,
     tokensByModel: {},
-    timeSavedMs: 0
+    subagentTokensByModel: {},
+    subagentCountByModel: {},
+    timeSavedMs: 0,
+    totalSubagentCount: 0
   };
 
   for (const s of sessions) {
     const m = s.metrics;
+    agg.totalSubagentCount += (s.subagentCount || 0);
     agg.totalInputTokens += m.totalInputTokens;
     agg.totalOutputTokens += m.totalOutputTokens;
     agg.totalCacheReadTokens += m.totalCacheReadTokens;
@@ -296,6 +319,21 @@ function aggregateSessions(sessions) {
       agg.tokensByModel[model].cacheRead += tokens.cacheRead;
       agg.tokensByModel[model].cacheWrite += tokens.cacheWrite;
       agg.tokensByModel[model].cost += tokens.cost;
+    }
+
+    for (const [model, count] of Object.entries(m.subagentCountByModel || {})) {
+      agg.subagentCountByModel[model] = (agg.subagentCountByModel[model] || 0) + count;
+    }
+
+    for (const [model, tokens] of Object.entries(m.subagentTokensByModel || {})) {
+      if (!agg.subagentTokensByModel[model]) {
+        agg.subagentTokensByModel[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+      }
+      agg.subagentTokensByModel[model].input += tokens.input;
+      agg.subagentTokensByModel[model].output += tokens.output;
+      agg.subagentTokensByModel[model].cacheRead += tokens.cacheRead;
+      agg.subagentTokensByModel[model].cacheWrite += tokens.cacheWrite;
+      agg.subagentTokensByModel[model].cost += tokens.cost;
     }
   }
 

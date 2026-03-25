@@ -101,6 +101,7 @@ async function parseSessionFile(filePath) {
       metrics.turnCount++;
       const msg = entry.message;
       const model = msg.model || 'unknown';
+      if (model === '<synthetic>') continue;
       models.add(model);
 
       if (msg.usage) {

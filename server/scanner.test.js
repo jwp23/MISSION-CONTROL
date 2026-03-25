@@ -202,6 +202,69 @@ describe('subagent metric merging', () => {
     assert.ok(s.models.includes('claude-sonnet-4-6'));
     assert.ok(s.models.includes('claude-haiku-4-5-20251001'));
   });
+
+  it('sets subagentCount to the number of merged subagents', async () => {
+    scanner.sessionCache.clear();
+    const project = { sessionsDir, encodedPath: 'test-subcount', name: 'test', path: tmpDir };
+    const sessions = await scanner.getProjectSessions(project, {});
+    const s = sessions[0];
+
+    assert.equal(s.subagentCount, 2, 'fixture has 2 subagents');
+  });
+
+  it('does not set subagentCount on sessions with no subagents', async () => {
+    const noSubTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-nosub-'));
+    const noSubSessionsDir = createFixture(noSubTmpDir, {
+      parentLines: [
+        makeUserEntry('solo session', { sessionId: 'sess-nosub' }),
+        makeAssistantEntry('claude-opus-4-6', 1000, 500, { sessionId: 'sess-nosub' })
+      ]
+    });
+
+    scanner.sessionCache.clear();
+    const project = { sessionsDir: noSubSessionsDir, encodedPath: 'test-nosub', name: 'test', path: noSubTmpDir };
+    const sessions = await scanner.getProjectSessions(project, {});
+    const s = sessions[0];
+
+    assert.equal(s.subagentCount, undefined, 'no subagents means subagentCount is not set');
+
+    fs.rmSync(noSubTmpDir, { recursive: true, force: true });
+  });
+
+  it('tracks subagent count per model in subagentCountByModel', async () => {
+    scanner.sessionCache.clear();
+    const project = { sessionsDir, encodedPath: 'test-subcountmodel', name: 'test', path: tmpDir };
+    const sessions = await scanner.getProjectSessions(project, {});
+    const s = sessions[0];
+    const counts = s.metrics.subagentCountByModel;
+
+    // Subagent 1 used sonnet, subagent 2 used haiku
+    assert.equal(counts['claude-sonnet-4-6'], 1);
+    assert.equal(counts['claude-haiku-4-5-20251001'], 1);
+    // Opus was parent-only
+    assert.equal(counts['claude-opus-4-6'], undefined);
+  });
+
+  it('tracks subagent token contributions in subagentTokensByModel', async () => {
+    scanner.sessionCache.clear();
+    const project = { sessionsDir, encodedPath: 'test-subtokens', name: 'test', path: tmpDir };
+    const sessions = await scanner.getProjectSessions(project, {});
+    const s = sessions[0];
+    const sub = s.metrics.subagentTokensByModel;
+
+    // Opus was only used by the parent — should not appear in subagentTokensByModel
+    assert.equal(sub['claude-opus-4-6'], undefined, 'opus is parent-only');
+
+    // Sonnet subagent: 2000+1500 input, 800+600 output
+    assert.ok(sub['claude-sonnet-4-6'], 'sonnet should be in subagentTokensByModel');
+    assert.equal(sub['claude-sonnet-4-6'].input, 3500);
+    assert.equal(sub['claude-sonnet-4-6'].output, 1400);
+
+    // Haiku subagent: 500 input, 200 output
+    assert.ok(sub['claude-haiku-4-5-20251001'], 'haiku should be in subagentTokensByModel');
+    assert.equal(sub['claude-haiku-4-5-20251001'].input, 500);
+    assert.equal(sub['claude-haiku-4-5-20251001'].output, 200);
+  });
 });
 
 describe('primaryModel selection', () => {
@@ -284,6 +347,7 @@ describe('aggregateSessions with subagent data', () => {
             'claude-sonnet-4-6': { input: 2000, output: 1000, cacheRead: 0, cacheWrite: 0, cost: 0.04 }
           }
         },
+        subagentCount: 3,
         timeSaved: { timeSavedMs: 120000 }
       },
       {
@@ -311,5 +375,145 @@ describe('aggregateSessions with subagent data', () => {
     assert.ok(agg.tokensByModel['claude-haiku-4-5-20251001']);
     assert.equal(agg.tokensByModel['claude-sonnet-4-6'].input, 2000);
     assert.equal(agg.tokensByModel['claude-haiku-4-5-20251001'].output, 500);
+  });
+
+  it('sums subagentCount into totalSubagentCount', () => {
+    const sessions = [
+      {
+        metrics: {
+          totalInputTokens: 100, totalOutputTokens: 50,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.01, totalDurationMs: 1000,
+          turnCount: 1, toolCallCount: 0, messageCount: 1,
+          tokensByModel: {}
+        },
+        subagentCount: 3,
+        timeSaved: { timeSavedMs: 5000 }
+      },
+      {
+        metrics: {
+          totalInputTokens: 200, totalOutputTokens: 100,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.02, totalDurationMs: 2000,
+          turnCount: 2, toolCallCount: 1, messageCount: 2,
+          tokensByModel: {}
+        },
+        subagentCount: 1,
+        timeSaved: { timeSavedMs: 10000 }
+      },
+      {
+        metrics: {
+          totalInputTokens: 50, totalOutputTokens: 25,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.005, totalDurationMs: 500,
+          turnCount: 1, toolCallCount: 0, messageCount: 1,
+          tokensByModel: {}
+        },
+        timeSaved: { timeSavedMs: 2000 }
+      }
+    ];
+
+    const agg = scanner.aggregateSessions(sessions);
+    assert.equal(agg.totalSubagentCount, 4, '3 + 1 + 0 = 4 total subagents');
+  });
+
+  it('aggregates subagentCountByModel across sessions', () => {
+    const sessions = [
+      {
+        metrics: {
+          totalInputTokens: 100, totalOutputTokens: 50,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.01, totalDurationMs: 1000,
+          turnCount: 1, toolCallCount: 0, messageCount: 1,
+          tokensByModel: {},
+          subagentTokensByModel: {},
+          subagentCountByModel: { 'claude-sonnet-4-6': 2, 'claude-haiku-4-5-20251001': 1 }
+        },
+        subagentCount: 3,
+        timeSaved: { timeSavedMs: 5000 }
+      },
+      {
+        metrics: {
+          totalInputTokens: 200, totalOutputTokens: 100,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.02, totalDurationMs: 2000,
+          turnCount: 2, toolCallCount: 1, messageCount: 2,
+          tokensByModel: {},
+          subagentTokensByModel: {},
+          subagentCountByModel: { 'claude-sonnet-4-6': 1 }
+        },
+        subagentCount: 1,
+        timeSaved: { timeSavedMs: 10000 }
+      }
+    ];
+
+    const agg = scanner.aggregateSessions(sessions);
+    assert.equal(agg.subagentCountByModel['claude-sonnet-4-6'], 3);
+    assert.equal(agg.subagentCountByModel['claude-haiku-4-5-20251001'], 1);
+  });
+
+  it('aggregates subagentTokensByModel across sessions', () => {
+    const sessions = [
+      {
+        metrics: {
+          totalInputTokens: 5000, totalOutputTokens: 2000,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.10, totalDurationMs: 60000,
+          turnCount: 5, toolCallCount: 3, messageCount: 10,
+          tokensByModel: {
+            'claude-opus-4-6': { input: 3000, output: 1000, cacheRead: 0, cacheWrite: 0, cost: 0.06 },
+            'claude-sonnet-4-6': { input: 2000, output: 1000, cacheRead: 0, cacheWrite: 0, cost: 0.04 }
+          },
+          subagentTokensByModel: {
+            'claude-sonnet-4-6': { input: 2000, output: 1000, cacheRead: 0, cacheWrite: 0, cost: 0.04 }
+          }
+        },
+        subagentCount: 1,
+        timeSaved: { timeSavedMs: 120000 }
+      },
+      {
+        metrics: {
+          totalInputTokens: 1000, totalOutputTokens: 500,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.02, totalDurationMs: 30000,
+          turnCount: 2, toolCallCount: 1, messageCount: 4,
+          tokensByModel: {
+            'claude-sonnet-4-6': { input: 500, output: 200, cacheRead: 0, cacheWrite: 0, cost: 0.01 },
+            'claude-haiku-4-5-20251001': { input: 500, output: 300, cacheRead: 0, cacheWrite: 0, cost: 0.01 }
+          },
+          subagentTokensByModel: {
+            'claude-haiku-4-5-20251001': { input: 500, output: 300, cacheRead: 0, cacheWrite: 0, cost: 0.01 }
+          }
+        },
+        subagentCount: 1,
+        timeSaved: { timeSavedMs: 60000 }
+      }
+    ];
+
+    const agg = scanner.aggregateSessions(sessions);
+    assert.ok(agg.subagentTokensByModel['claude-sonnet-4-6']);
+    assert.equal(agg.subagentTokensByModel['claude-sonnet-4-6'].input, 2000);
+    assert.ok(agg.subagentTokensByModel['claude-haiku-4-5-20251001']);
+    assert.equal(agg.subagentTokensByModel['claude-haiku-4-5-20251001'].input, 500);
+    // Opus had no subagent contribution
+    assert.equal(agg.subagentTokensByModel['claude-opus-4-6'], undefined);
+  });
+
+  it('returns totalSubagentCount of 0 when no sessions have subagents', () => {
+    const sessions = [
+      {
+        metrics: {
+          totalInputTokens: 100, totalOutputTokens: 50,
+          totalCacheReadTokens: 0, totalCacheWriteTokens: 0,
+          totalCost: 0.01, totalDurationMs: 1000,
+          turnCount: 1, toolCallCount: 0, messageCount: 1,
+          tokensByModel: {}
+        },
+        timeSaved: { timeSavedMs: 5000 }
+      }
+    ];
+
+    const agg = scanner.aggregateSessions(sessions);
+    assert.equal(agg.totalSubagentCount, 0);
   });
 });
