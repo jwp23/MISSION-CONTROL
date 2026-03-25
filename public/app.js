@@ -584,7 +584,10 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
         }
         setTimeout(() => setRestoring(null), 2000);
       })
-      .catch(() => setRestoring(null));
+      .catch(() => {
+        setRestoreMsg({ sessionId, type: 'error', text: 'Network error launching terminal' });
+        setRestoring(null);
+      });
   };
 
   const handleCopyId = (sessionId) => {
@@ -652,9 +655,10 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                       title={`Click to copy: ${msg.text}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigator.clipboard.writeText(msg.text);
-                        setRestoreMsg({ ...msg, copied: true });
-                        setTimeout(() => setRestoreMsg(null), 2000);
+                        navigator.clipboard.writeText(msg.text).then(() => {
+                          setRestoreMsg({ ...msg, copied: true });
+                          setTimeout(() => setRestoreMsg(null), 2000);
+                        });
                       }}
                     >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
                   }

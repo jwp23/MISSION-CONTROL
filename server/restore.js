@@ -1,5 +1,4 @@
-const { exec, execFileSync } = require('child_process');
-const { spawn } = require('child_process');
+const { exec, execFileSync, spawn } = require('child_process');
 
 const TERMINALS = {
   ghostty:       { bin: 'ghostty',     execFlag: '-e', full: true },
@@ -8,6 +7,10 @@ const TERMINALS = {
   'cosmic-term': { bin: 'cosmic-term', cwdFlag: '-w',  full: false },
   zeditor:       { bin: 'zeditor',     cwdFlag: null,  full: false },
 };
+
+function shellQuote(s) {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
 
 function findBinary(bin) {
   try {
@@ -26,6 +29,8 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
 
   // macOS + ghostty: use AppleScript (legacy path)
   if (platform === 'darwin' && terminalName === 'ghostty') {
+    const safeCwd = cwd.replace(/["\\]/g, '\\$&');
+    const safeId = sessionId.replace(/["\\]/g, '\\$&');
     const script = `
       tell application "Ghostty"
         activate
@@ -35,7 +40,7 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
         tell process "Ghostty"
           keystroke "n" using command down
           delay 0.3
-          keystroke "cd ${cwd.replace(/"/g, '\\"')} && claude --resume ${sessionId}"
+          keystroke "cd ${safeCwd} && claude --resume ${safeId}"
           key code 36
         end tell
       end tell
@@ -43,7 +48,7 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
     return { type: 'applescript', script, partial: false };
   }
 
-  const resumeCmd = `cd ${cwd} && exec claude --resume ${sessionId}`;
+  const resumeCmd = `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(sessionId)}`;
 
   // Full-support terminals: launch with command execution
   if (terminal.full) {
@@ -86,23 +91,34 @@ function restoreSession(sessionId, cwd, terminal = 'ghostty') {
       return;
     }
 
+    let settled = false;
+
     const child = spawn(launch.bin, launch.args, {
       detached: true,
       stdio: 'ignore',
     });
 
     child.on('error', (err) => {
-      reject(new Error(`Failed to launch ${terminal}: ${err.message}`));
+      if (!settled) {
+        settled = true;
+        reject(new Error(`Failed to launch ${terminal}: ${err.message}`));
+      }
     });
 
     child.unref();
 
-    const result = { success: true, sessionId, cwd, partial: launch.partial };
-    if (launch.resumeCommand) {
-      result.resumeCommand = launch.resumeCommand;
-    }
-    resolve(result);
+    // Defer resolve so a synchronous spawn error can settle the promise first
+    process.nextTick(() => {
+      if (!settled) {
+        settled = true;
+        const result = { success: true, sessionId, cwd, partial: launch.partial };
+        if (launch.resumeCommand) {
+          result.resumeCommand = launch.resumeCommand;
+        }
+        resolve(result);
+      }
+    });
   });
 }
 
-module.exports = { restoreSession, buildLaunchArgs, findBinary, TERMINALS };
+module.exports = { restoreSession, buildLaunchArgs, findBinary, shellQuote, TERMINALS };

