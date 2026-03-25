@@ -636,7 +636,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                 )}
               </td>
               <td className="col-actions">
-                {s.sessionId && (
+                {s.sessionId && (<>
                   <button
                     className={`restore-btn ${restoring === s.sessionId ? 'restoring' : ''}`}
                     onClick={(e) => { e.stopPropagation(); handleRestore(s.sessionId, s.projectPath); }}
@@ -661,7 +661,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                           {restoreMsg.copied ? 'copied!' : 'copy cmd'}
                         </button>
                   )}
-                )}
+                </>)}
               </td>
               {showProject && (
                 <td className="col-project">
