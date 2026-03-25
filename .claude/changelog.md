@@ -9,6 +9,16 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ## [Unreleased]
 
+### Fixed
+
+- Subagent JSONL files (`{uuid}/subagents/*.jsonl`) were never scanned, hiding sonnet/haiku usage and undercounting tokens, costs, and tool calls
+- `primaryModel` used first-seen model instead of highest-token-usage model, always showing "opus"
+
+### Added
+
+- Test suite using `node:test` with 8 tests for subagent discovery, metric merging, and primaryModel selection
+- `npm test` script in package.json
+
 ### Changed
 
 - Upgraded React from 18 to 19 (React 19 removed UMD builds; now loaded via esm.sh CDN + import maps)
