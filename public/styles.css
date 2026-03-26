@@ -428,6 +428,20 @@ body {
   color: var(--green);
 }
 
+.sessionid-btn.named {
+  color: var(--amber);
+  border-color: var(--amber);
+  font-size: 9px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionid-btn.named:hover {
+  color: var(--text-primary);
+  border-color: var(--amber);
+}
+
 /* Editable summary */
 .summary-text {
   cursor: default;

@@ -81,6 +81,7 @@ app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
       const summaryOverride = sessionState.getSummary(s.sessionId);
       return {
         sessionId: s.sessionId,
+        sessionName: s.sessionName || null,
         summary: summaryOverride != null ? summaryOverride : s.summary,
         primaryModel: s.primaryModel,
         models: s.models,
@@ -123,6 +124,7 @@ app.get('/api/sessions/all', async (req, res) => {
       const summaryOverride = sessionState.getSummary(s.sessionId);
       const entry = {
         sessionId: s.sessionId,
+        sessionName: s.sessionName || null,
         summary: summaryOverride != null ? summaryOverride : s.summary,
         primaryModel: s.primaryModel,
         models: s.models,
@@ -183,9 +185,11 @@ app.get('/api/search', async (req, res) => {
     const results = [];
     for (const [, session] of scanner.sessionCache) {
       if ((session.summary && session.summary.toLowerCase().includes(query)) ||
-          (session.sessionId && session.sessionId.toLowerCase().includes(query))) {
+          (session.sessionId && session.sessionId.toLowerCase().includes(query)) ||
+          (session.sessionName && session.sessionName.toLowerCase().includes(query))) {
         results.push({
           sessionId: session.sessionId,
+          sessionName: session.sessionName || null,
           summary: session.summary,
           primaryModel: session.primaryModel,
           firstTimestamp: session.firstTimestamp,

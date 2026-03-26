@@ -23,6 +23,7 @@ async function parseSessionFile(filePath) {
   let firstTimestamp = null;
   let lastTimestamp = null;
   let sessionId = null;
+  let sessionName = null;        // From custom-title or agent-name entries
   const userMessages = [];       // Collect first few user messages for summary
   const toolsUsed = new Set();   // Track tool names
   const filesModified = new Set(); // Track files edited/written
@@ -50,6 +51,13 @@ async function parseSessionFile(filePath) {
       const ts = new Date(entry.timestamp).getTime();
       if (!firstTimestamp || ts < firstTimestamp) firstTimestamp = ts;
       if (!lastTimestamp || ts > lastTimestamp) lastTimestamp = ts;
+    }
+
+    // Extract session name (last one wins — renamed sessions have multiple)
+    if (entry.type === 'custom-title' && entry.customTitle) {
+      sessionName = entry.customTitle;
+    } else if (entry.type === 'agent-name' && entry.agentName) {
+      sessionName = entry.agentName;
     }
 
     if (entry.type === 'user') {
@@ -149,6 +157,7 @@ async function parseSessionFile(filePath) {
 
   return {
     sessionId,
+    sessionName,
     filePath,
     summary,
     firstTimestamp,

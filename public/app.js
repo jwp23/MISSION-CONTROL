@@ -616,11 +616,11 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
               <td className="col-sessionid">
                 {s.sessionId && (
                   <button
-                    className={`sessionid-btn ${copied === s.sessionId ? 'copied' : ''}`}
+                    className={`sessionid-btn ${s.sessionName ? 'named' : ''} ${copied === s.sessionId ? 'copied' : ''}`}
                     onClick={(e) => { e.stopPropagation(); handleCopyId(s.sessionId); }}
-                    title={s.sessionId}
+                    title={s.sessionName ? `${s.sessionName}\n${s.sessionId}` : s.sessionId}
                   >
-                    {copied === s.sessionId ? 'copied' : 'sessionid'}
+                    {copied === s.sessionId ? 'copied' : (s.sessionName || 'sessionid')}
                   </button>
                 )}
               </td>
