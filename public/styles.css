@@ -17,6 +17,7 @@
   --green-dim: #00cc6a;
   --amber: #ff6b35;
   --blue: #4da6ff;
+  --blue-dim: #2d6abf;
   --red: #ff4444;
   --font: 'IBM Plex Mono', monospace;
 }
@@ -483,6 +484,23 @@ body {
 .restore-btn.restoring {
   background: var(--text-dim);
   cursor: wait;
+}
+
+.restore-btn.restore-error-btn {
+  background: var(--red);
+  cursor: help;
+}
+
+.restore-btn.restore-copy-btn {
+  background: var(--blue-dim);
+}
+
+.restore-btn.restore-copy-btn:hover {
+  background: var(--blue);
+}
+
+.restore-btn.restore-copy-btn.copied {
+  background: var(--green);
 }
 
 /* Charts Panel */

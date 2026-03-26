@@ -545,6 +545,7 @@ function EditableSummary({ sessionId, summary, onSave }) {
 
 function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onStatusChange, onSummaryEdit, showProject, onSelectProject }) {
   const [restoring, setRestoring] = useState(null);
+  const [restoreMsg, setRestoreMsg] = useState(null);
   const [copied, setCopied] = useState(null);
 
   const sorted = [...sessions].sort((a, b) => {
@@ -568,14 +569,25 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
     const cwd = sessionProjectPath || projectPath;
     if (!sessionId || !cwd) return;
     setRestoring(sessionId);
+    setRestoreMsg(null);
     fetch(`/api/restore/${sessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cwd })
     })
       .then(r => r.json())
-      .then(() => setTimeout(() => setRestoring(null), 2000))
-      .catch(() => setRestoring(null));
+      .then(data => {
+        if (data.error) {
+          setRestoreMsg({ sessionId, type: 'error', text: data.error });
+        } else if (data.partial && data.resumeCommand) {
+          setRestoreMsg({ sessionId, type: 'partial', text: data.resumeCommand });
+        }
+        setTimeout(() => setRestoring(null), 2000);
+      })
+      .catch(() => {
+        setRestoreMsg({ sessionId, type: 'error', text: 'Network error launching terminal' });
+        setRestoring(null);
+      });
   };
 
   const handleCopyId = (sessionId) => {
@@ -627,16 +639,37 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                 )}
               </td>
               <td className="col-actions">
-                {s.sessionId && (
-                  <button
-                    className={`restore-btn ${restoring === s.sessionId ? 'restoring' : ''}`}
+                {s.sessionId && (() => {
+                  const msg = restoreMsg && restoreMsg.sessionId === s.sessionId ? restoreMsg : null;
+                  const isRestoring = restoring === s.sessionId;
+
+                  if (msg && msg.type === 'error') {
+                    return <button className="restore-btn restore-error-btn"
+                      title={msg.text}
+                      onClick={(e) => { e.stopPropagation(); setRestoreMsg(null); }}
+                    >Error</button>;
+                  }
+
+                  if (msg && msg.type === 'partial') {
+                    return <button className={`restore-btn restore-copy-btn${msg.copied ? ' copied' : ''}`}
+                      title={`Click to copy: ${msg.text}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(msg.text).then(() => {
+                          setRestoreMsg({ ...msg, copied: true });
+                          setTimeout(() => setRestoreMsg(null), 2000);
+                        });
+                      }}
+                    >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
+                  }
+
+                  return <button
+                    className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
                     onClick={(e) => { e.stopPropagation(); handleRestore(s.sessionId, s.projectPath); }}
-                    title={`Resume session in Ghostty\n${s.sessionId}`}
-                    disabled={restoring === s.sessionId}
-                  >
-                    {restoring === s.sessionId ? '...' : 'Launch'}
-                  </button>
-                )}
+                    title={`Resume session\n${s.sessionId}`}
+                    disabled={isRestoring}
+                  >{isRestoring ? '...' : 'Launch'}</button>;
+                })()}
               </td>
               {showProject && (
                 <td className="col-project">

@@ -12,7 +12,7 @@ Built for anyone using [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 - **Estimates time saved** based on a configurable multiplier (e.g., "this would have taken 8x longer without Claude")
 - **Interactive charts** -- daily usage trends, model split over time, monthly spend vs. plan limits
 - **Session management** -- mark sessions as WIP/Complete, edit summaries, search across all sessions
-- **Resume sessions** -- launch a Claude Code `--resume` directly from the dashboard into Ghostty (macOS)
+- **Resume sessions** -- launch a Claude Code `--resume` directly from the dashboard into your configured terminal
 
 ## Screenshot
 
@@ -22,7 +22,7 @@ Built for anyone using [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 
 - **Node.js** v24+ (LTS)
 - **Claude Code CLI** installed and configured (this reads Claude Code's local data files)
-- **Ghostty** terminal emulator (optional, for the session resume/launch feature -- macOS only)
+- A supported terminal emulator (optional, for the session resume/launch feature): Ghostty, Alacritty, Kitty, COSMIC Terminal, or Zed
 
 MISSION-CONTROL is read-only against your Claude Code data. It reads `.jsonl` session files and process metadata but never modifies them.
 
@@ -118,15 +118,26 @@ The "time saved" metric uses a configurable multiplier representing how much lon
 
 The multiplier is adjustable from the dashboard's top bar.
 
-### Session Resume (macOS + Ghostty)
+### Session Resume
 
-Clicking "Launch" on a session triggers an AppleScript that:
+Clicking "Launch" on a session opens your configured terminal and resumes the Claude Code session. Set the `terminal` field in `config.json`:
 
-1. Activates Ghostty
-2. Opens a new terminal window
-3. Runs `cd /project/path && claude --resume <session-id>`
+```json
+{
+  "terminal": "alacritty"
+}
+```
 
-This requires macOS and [Ghostty](https://ghostty.org). If you use a different terminal, the session ID is copyable so you can resume manually with `claude --resume <id>`.
+| Terminal | Platform | Behavior |
+|----------|----------|----------|
+| `ghostty` (default) | macOS | AppleScript: opens Ghostty, creates new window, runs resume command |
+| `ghostty` | Linux | Spawns with `-e` flag, runs resume command |
+| `alacritty` | Any | Spawns with `-e` flag, runs resume command |
+| `kitty` | Any | Spawns with positional args, runs resume command |
+| `cosmic-term` | Linux | Opens in project directory; resume command available via "Copy Cmd" button |
+| `zeditor` | Any | Opens/focuses project in Zed; resume command available via "Copy Cmd" button |
+
+For terminals that don't support executing a command directly (cosmic-term, zeditor), the Launch button transitions to "Copy Cmd" so you can paste `claude --resume <id>` into the terminal yourself.
 
 ## Dashboard Features
 
@@ -178,12 +189,12 @@ All endpoints return JSON.
 | `PUT` | `/api/config` | Update configuration |
 | `PUT` | `/api/sessions/:id/status` | Set session status (wip/complete/null) |
 | `PUT` | `/api/sessions/:id/summary` | Edit session summary |
-| `POST` | `/api/restore/:id` | Resume session in Ghostty |
+| `POST` | `/api/restore/:id` | Resume session in configured terminal |
 
 ## Tech Stack
 
 - **Server:** Node.js 24 LTS + Express
-- **Frontend:** React 18 (via CDN, no build step)
+- **Frontend:** React 19 (via esm.sh CDN, no build step)
 - **File watching:** Chokidar
 - **Styling:** Custom CSS with IBM Plex Mono
 - **Dependencies:** 2 production packages (`express`, `chokidar`)

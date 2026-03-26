@@ -1,4 +1,5 @@
 {
+  "terminal": "ghostty",
   "scanPath": "~/projects",
   "claudeDir": "~/.claude",
   "port": 9000,

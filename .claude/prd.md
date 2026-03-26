@@ -52,7 +52,7 @@ Purpose: This file defines what we are building and for whom.
 - The existing macOS/Ghostty path continues to work as-is; this adds a parallel Linux launch path.
 - Configuration lives in `config.json` as a `terminal` key (e.g., `"terminal": "alacritty"`).
 - Default remains `ghostty`. The app maps known terminal names to their launch commands internally.
-- Supported terminals at minimum: `ghostty`, `alacritty`, `cosmic-term`, `kitty`.
+- Supported terminals at minimum: `ghostty`, `alacritty`, `cosmic-term`, `kitty`, `zeditor`.
 
 **Acceptance Criteria:**
 
