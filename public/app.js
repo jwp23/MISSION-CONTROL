@@ -1,4 +1,5 @@
-const { useState, useEffect, useCallback } = React;
+import React, { useState, useEffect, useCallback } from "react";
+import { createRoot } from "react-dom/client";
 
 // --- Utility Functions ---
 
@@ -599,6 +600,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
             {showProject && <th className="col-project" onClick={() => handleSort('projectName')}>Project{arrow('projectName')}</th>}
             <th className="col-summary" onClick={() => handleSort('summary')}>Summary{arrow('summary')}</th>
             <th className="col-model" onClick={() => handleSort('primaryModel')}>Model{arrow('primaryModel')}</th>
+            <th className="col-subs" onClick={() => handleSort('subagentCount')}>Subs{arrow('subagentCount')}</th>
             <th className="col-tokens" onClick={() => handleSort('totalTokens')}>Tokens{arrow('totalTokens')}</th>
             <th className="col-cost" onClick={() => handleSort('totalCost')}>Cost{arrow('totalCost')}</th>
             <th className="col-duration" onClick={() => handleSort('durationMs')}>Duration{arrow('durationMs')}</th>
@@ -647,6 +649,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
                 <EditableSummary sessionId={s.sessionId} summary={s.summary} onSave={onSummaryEdit} />
               </td>
               <td className="col-model">{shortModel(s.primaryModel)}</td>
+              <td className="col-subs">{s.subagentCount > 0 ? s.subagentCount : ''}</td>
               <td className="col-tokens">{formatTokens(s.totalTokens)}</td>
               <td className="col-cost">{formatCost(s.totalCost)}</td>
               <td className="col-duration">{formatDuration(s.durationMs)}</td>
@@ -663,7 +666,11 @@ function Rollup({ aggregate }) {
   if (!aggregate) return null;
 
   const models = Object.entries(aggregate.tokensByModel || {});
+  const subModels = Object.entries(aggregate.subagentTokensByModel || {});
+  const subCountByModel = aggregate.subagentCountByModel || {};
   const totalTokens = models.reduce((sum, [, m]) => sum + m.input + m.output + m.cacheRead + m.cacheWrite, 0);
+  const totalSubTokens = subModels.reduce((sum, [, m]) => sum + m.input + m.output + m.cacheRead + m.cacheWrite, 0);
+  const totalSubCost = subModels.reduce((sum, [, m]) => sum + m.cost, 0);
 
   return (
     <div className="rollup">
@@ -682,6 +689,23 @@ function Rollup({ aggregate }) {
           );
         })}
       </div>
+      {aggregate.totalSubagentCount > 0 && (
+        <div className="rollup-section">
+          <div className="rollup-title">Subagents</div>
+          <div className="subagent-summary">
+            {aggregate.totalSubagentCount} subagent{aggregate.totalSubagentCount !== 1 ? 's' : ''} · {formatTokens(totalSubTokens)} tokens · {formatCost(totalSubCost)}
+          </div>
+          {subModels.map(([model, tokens]) => {
+            const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+            const count = subCountByModel[model] || 0;
+            return (
+              <div className="subagent-model-row" key={model}>
+                <span style={{color: 'var(--text-dim)'}}>{shortModel(model)}:</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · {formatCost(tokens.cost)}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="rollup-section">
         <div className="rollup-title">Totals</div>
         <div><span style={{color: 'var(--text-dim)'}}>Input:</span> {formatTokens(aggregate.totalInputTokens)}</div>
@@ -693,6 +717,9 @@ function Rollup({ aggregate }) {
       <div className="rollup-section">
         <div className="rollup-title">Time</div>
         <div><span style={{color: 'var(--text-dim)'}}>Claude Time:</span> <span style={{color: 'var(--blue)'}}>{formatDuration(aggregate.totalDurationMs)}</span></div>
+        {aggregate.totalSubagentDurationMs > 0 && (
+          <div><span style={{color: 'var(--text-dim)'}}>Subagent Time:</span> <span style={{color: 'var(--blue)'}}>{formatDuration(aggregate.totalSubagentDurationMs)}</span></div>
+        )}
         <div><span style={{color: 'var(--text-dim)'}}>Est. Manual:</span> <span style={{color: 'var(--amber)'}}>{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
         <div><span style={{color: 'var(--text-dim)'}}>Time Saved:</span> <span style={{color: 'var(--green)'}}>{formatDuration(aggregate.timeSavedMs)}</span></div>
       </div>
@@ -960,5 +987,5 @@ function App() {
 }
 
 // Mount
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const root = createRoot(document.getElementById('root'));
 root.render(<App />);

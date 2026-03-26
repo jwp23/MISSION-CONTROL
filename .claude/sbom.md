@@ -8,17 +8,23 @@ Purpose: Lists all approved technologies, libraries, and dependencies with their
 
 | Category | Component | Version | Rationale |
 |----------|-----------|---------|-----------|
-| [To be defined after PRD] | | | |
+| Runtime | Node.js | 24.x LTS | EOL policy — always track current LTS |
+| Server | Express | ^4.21.0 | Lightweight HTTP framework |
+| File watching | Chokidar | ^3.6.0 | Cross-platform fs.watch wrapper |
+| Frontend (CDN) | React | 19.x | UI library — loaded via esm.sh CDN (React 19 dropped UMD) |
+| Frontend (CDN) | React DOM | 19.x | React renderer — loaded via esm.sh CDN |
 
 ---
 
 ## 1. Version Management & Updates
 
-- **Update Strategy:** [To be defined]
-- **Security Scanning:** [To be defined]
+- **Update Strategy:** Track current Node.js LTS. Update dependencies via `npm update` with manual review.
+- **Security Scanning:** `npm audit` before releases.
 
 ---
 
 ## 2. Documentation & Resources
 
-- [To be populated with relevant docs links]
+- [Node.js LTS schedule](https://nodejs.org/en/about/releases/)
+- [Express docs](https://expressjs.com/)
+- [Chokidar docs](https://github.com/paulmillr/chokidar)

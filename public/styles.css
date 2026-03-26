@@ -316,6 +316,14 @@ body {
   font-size: 10px;
 }
 
+.session-table .col-subs,
+.session-table th.col-subs {
+  width: 36px;
+  text-align: right;
+  color: var(--blue);
+  font-size: 10px;
+}
+
 .session-table .col-tokens,
 .session-table th.col-tokens {
   width: 60px;
@@ -640,6 +648,18 @@ body {
   align-items: center;
   gap: 6px;
   margin-bottom: 2px;
+}
+
+.subagent-summary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.subagent-model-row {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-left: 6px;
 }
 
 .model-bar-fill {

@@ -93,6 +93,7 @@ app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
         durationMs: s.metrics.totalDurationMs,
         turnCount: s.metrics.turnCount,
         toolCallCount: s.metrics.toolCallCount,
+        subagentCount: s.subagentCount,
         timeSaved: s.timeSaved,
         status: ss ? ss.status : null,
         statusNote: ss ? ss.note : null
@@ -136,6 +137,7 @@ app.get('/api/sessions/all', async (req, res) => {
         durationMs: s.metrics.totalDurationMs,
         turnCount: s.metrics.turnCount,
         toolCallCount: s.metrics.toolCallCount,
+        subagentCount: s.subagentCount,
         timeSaved: s.timeSaved,
         status: ss ? ss.status : null,
         statusNote: ss ? ss.note : null,

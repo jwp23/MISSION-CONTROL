@@ -51,7 +51,9 @@ function discoverProjects() {
 }
 
 /**
- * List session JSONL files for a project
+ * List session JSONL files for a project.
+ * Discovers both top-level session files and subagent files in
+ * {uuid}/subagents/*.jsonl, linking subagents to their parent session.
  */
 function listSessionFiles(sessionsDir) {
   if (!fs.existsSync(sessionsDir)) return [];
@@ -66,12 +68,33 @@ function listSessionFiles(sessionsDir) {
     // Skip tiny files (< 100 bytes)
     if (stat.size < 100) continue;
 
+    const sessionId = entry.replace('.jsonl', '');
     sessions.push({
-      id: entry.replace('.jsonl', ''),
+      id: sessionId,
       filePath,
       size: stat.size,
       modified: stat.mtime
     });
+
+    // Check for subagent files in {uuid}/subagents/
+    const subagentsDir = path.join(sessionsDir, sessionId, 'subagents');
+    if (fs.existsSync(subagentsDir)) {
+      const subEntries = fs.readdirSync(subagentsDir);
+      for (const subEntry of subEntries) {
+        if (!subEntry.endsWith('.jsonl')) continue;
+        const subPath = path.join(subagentsDir, subEntry);
+        const subStat = fs.statSync(subPath);
+        if (subStat.size < 100) continue;
+
+        sessions.push({
+          id: subEntry.replace('.jsonl', ''),
+          filePath: subPath,
+          size: subStat.size,
+          modified: subStat.mtime,
+          parentSessionId: sessionId
+        });
+      }
+    }
   }
 
   // Sort newest first
@@ -112,14 +135,103 @@ function getActiveSessions() {
 const sessionCache = new Map();
 
 /**
- * Parse all sessions for a project (with caching)
+ * Merge a subagent's parsed metrics into a parent session object.
+ */
+function mergeSubagentMetrics(parent, subagent) {
+  parent.subagentCount = (parent.subagentCount || 0) + 1;
+
+  const pm = parent.metrics;
+  const sm = subagent.metrics;
+
+  pm.totalInputTokens += sm.totalInputTokens;
+  pm.totalOutputTokens += sm.totalOutputTokens;
+  pm.totalCacheReadTokens += sm.totalCacheReadTokens;
+  pm.totalCacheWriteTokens += sm.totalCacheWriteTokens;
+  pm.totalCost += sm.totalCost;
+  if (!pm.subagentDurationMs) pm.subagentDurationMs = 0;
+  pm.subagentDurationMs += sm.totalDurationMs;
+  pm.turnCount += sm.turnCount;
+  pm.toolCallCount += sm.toolCallCount;
+  pm.messageCount += sm.messageCount;
+
+  if (!pm.subagentTokensByModel) pm.subagentTokensByModel = {};
+  if (!pm.subagentCountByModel) pm.subagentCountByModel = {};
+
+  // Count this subagent once per model it used
+  for (const model of subagent.models) {
+    pm.subagentCountByModel[model] = (pm.subagentCountByModel[model] || 0) + 1;
+  }
+
+  for (const [model, tokens] of Object.entries(sm.tokensByModel)) {
+    if (!pm.tokensByModel[model]) {
+      pm.tokensByModel[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    }
+    pm.tokensByModel[model].input += tokens.input;
+    pm.tokensByModel[model].output += tokens.output;
+    pm.tokensByModel[model].cacheRead += tokens.cacheRead;
+    pm.tokensByModel[model].cacheWrite += tokens.cacheWrite;
+    pm.tokensByModel[model].cost += tokens.cost;
+
+    if (!pm.subagentTokensByModel[model]) {
+      pm.subagentTokensByModel[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    }
+    pm.subagentTokensByModel[model].input += tokens.input;
+    pm.subagentTokensByModel[model].output += tokens.output;
+    pm.subagentTokensByModel[model].cacheRead += tokens.cacheRead;
+    pm.subagentTokensByModel[model].cacheWrite += tokens.cacheWrite;
+    pm.subagentTokensByModel[model].cost += tokens.cost;
+  }
+
+  // Merge model list
+  for (const model of subagent.models) {
+    if (!parent.models.includes(model)) {
+      parent.models.push(model);
+    }
+  }
+}
+
+/**
+ * Recompute primaryModel from tokensByModel (highest total tokens wins).
+ */
+function computePrimaryModel(parsed) {
+  const entries = Object.entries(parsed.metrics.tokensByModel);
+  if (entries.length === 0) {
+    parsed.primaryModel = parsed.models.length > 0 ? parsed.models[0] : 'unknown';
+    return;
+  }
+  parsed.primaryModel = entries
+    .sort((a, b) => {
+      const totalA = a[1].input + a[1].output + a[1].cacheRead + a[1].cacheWrite;
+      const totalB = b[1].input + b[1].output + b[1].cacheRead + b[1].cacheWrite;
+      return totalB - totalA;
+    })[0][0];
+}
+
+/**
+ * Parse all sessions for a project (with caching).
+ * Subagent files are merged into their parent session's metrics.
  */
 async function getProjectSessions(project, historyIndex) {
   const files = listSessionFiles(project.sessionsDir);
+  const parentFiles = files.filter(f => !f.parentSessionId);
+  const subagentFiles = files.filter(f => f.parentSessionId);
+
+  // Group subagent files by parent session ID
+  const subagentsByParent = {};
+  for (const sf of subagentFiles) {
+    if (!subagentsByParent[sf.parentSessionId]) {
+      subagentsByParent[sf.parentSessionId] = [];
+    }
+    subagentsByParent[sf.parentSessionId].push(sf);
+  }
+
   const sessions = [];
 
-  for (const file of files) {
-    const cacheKey = `${file.filePath}:${file.modified.getTime()}`;
+  for (const file of parentFiles) {
+    const subFiles = subagentsByParent[file.id] || [];
+    // Cache key includes parent + all subagent mtimes for invalidation
+    const subMtimes = subFiles.map(sf => sf.modified.getTime()).sort().join(',');
+    const cacheKey = `${file.filePath}:${file.modified.getTime()}:${subMtimes}`;
     if (sessionCache.has(cacheKey)) {
       sessions.push(sessionCache.get(cacheKey));
       continue;
@@ -127,6 +239,20 @@ async function getProjectSessions(project, historyIndex) {
 
     try {
       const parsed = await parser.parseSessionFile(file.filePath);
+
+      // Parse and merge each subagent's metrics
+      for (const subFile of subFiles) {
+        try {
+          const subParsed = await parser.parseSessionFile(subFile.filePath);
+          mergeSubagentMetrics(parsed, subParsed);
+        } catch (err) {
+          console.error(`Error parsing subagent ${subFile.filePath}: ${err.message}`);
+        }
+      }
+
+      // Recompute primaryModel after merging
+      computePrimaryModel(parsed);
+
       // Enrich summary from history index if available
       if (parsed.sessionId && historyIndex[parsed.sessionId]) {
         const histEntry = historyIndex[parsed.sessionId];
@@ -165,11 +291,16 @@ function aggregateSessions(sessions) {
     totalToolCalls: 0,
     totalMessages: 0,
     tokensByModel: {},
-    timeSavedMs: 0
+    subagentTokensByModel: {},
+    subagentCountByModel: {},
+    timeSavedMs: 0,
+    totalSubagentCount: 0,
+    totalSubagentDurationMs: 0
   };
 
   for (const s of sessions) {
     const m = s.metrics;
+    agg.totalSubagentCount += (s.subagentCount || 0);
     agg.totalInputTokens += m.totalInputTokens;
     agg.totalOutputTokens += m.totalOutputTokens;
     agg.totalCacheReadTokens += m.totalCacheReadTokens;
@@ -180,6 +311,7 @@ function aggregateSessions(sessions) {
     agg.totalToolCalls += m.toolCallCount;
     agg.totalMessages += m.messageCount;
     agg.timeSavedMs += (s.timeSaved ? s.timeSaved.timeSavedMs : 0);
+    agg.totalSubagentDurationMs += (s.metrics.subagentDurationMs || 0);
 
     for (const [model, tokens] of Object.entries(m.tokensByModel)) {
       if (!agg.tokensByModel[model]) {
@@ -190,6 +322,21 @@ function aggregateSessions(sessions) {
       agg.tokensByModel[model].cacheRead += tokens.cacheRead;
       agg.tokensByModel[model].cacheWrite += tokens.cacheWrite;
       agg.tokensByModel[model].cost += tokens.cost;
+    }
+
+    for (const [model, count] of Object.entries(m.subagentCountByModel || {})) {
+      agg.subagentCountByModel[model] = (agg.subagentCountByModel[model] || 0) + count;
+    }
+
+    for (const [model, tokens] of Object.entries(m.subagentTokensByModel || {})) {
+      if (!agg.subagentTokensByModel[model]) {
+        agg.subagentTokensByModel[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+      }
+      agg.subagentTokensByModel[model].input += tokens.input;
+      agg.subagentTokensByModel[model].output += tokens.output;
+      agg.subagentTokensByModel[model].cacheRead += tokens.cacheRead;
+      agg.subagentTokensByModel[model].cacheWrite += tokens.cacheWrite;
+      agg.subagentTokensByModel[model].cost += tokens.cost;
     }
   }
 
