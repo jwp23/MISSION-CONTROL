@@ -5,6 +5,7 @@ const scanner = require('./scanner');
 const parser = require('./parser');
 const restore = require('./restore');
 const sessionState = require('./session-state');
+const timerange = require('./timerange');
 
 const app = express();
 app.use(express.json());
@@ -114,7 +115,8 @@ app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
         seen.set(s.sessionId, s);
       }
     }
-    res.json(Array.from(seen.values()));
+    const filtered = timerange.filterSessions(Array.from(seen.values()), timerange.parseRange(req.query));
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -159,10 +161,12 @@ app.get('/api/sessions/all', async (req, res) => {
     }
 
     // Sort newest first
-    const result = Array.from(seen.values()).sort((a, b) =>
+    const range = timerange.parseRange(req.query);
+    const dedupedResult = Array.from(seen.values());
+    const filtered = timerange.filterSessions(dedupedResult, range).sort((a, b) =>
       (b.firstTimestamp || 0) - (a.firstTimestamp || 0)
     );
-    res.json(result);
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -232,7 +236,9 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const allSessions = Array.from(scanner.sessionCache.values());
-    const aggregate = scanner.aggregateSessions(allSessions);
+    const range = timerange.parseRange(req.query);
+    const sessions = timerange.filterSessions(allSessions, range);
+    const aggregate = scanner.aggregateSessions(sessions);
     const activeSessions = scanner.getActiveSessions();
 
     res.json({
@@ -253,6 +259,7 @@ app.get('/api/daily-stats', async (req, res) => {
     if (req.query.project) {
       allSessions = allSessions.filter(s => s.encodedPath === req.query.project);
     }
+    allSessions = timerange.filterSessions(allSessions, timerange.parseRange(req.query));
     const dailyMap = {}; // 'YYYY-MM-DD' -> { tokens, cost, sessions, durationMs }
 
     for (const s of allSessions) {
@@ -290,6 +297,7 @@ app.get('/api/monthly-stats', async (req, res) => {
     if (req.query.project) {
       allSessions = allSessions.filter(s => s.encodedPath === req.query.project);
     }
+    allSessions = timerange.filterSessions(allSessions, timerange.parseRange(req.query));
     const monthlyMap = {}; // 'YYYY-MM' -> { month, cost, tokens, sessions, durationMs }
 
     for (const s of allSessions) {
