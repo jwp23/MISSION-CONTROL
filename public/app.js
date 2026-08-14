@@ -378,7 +378,7 @@ function MonthlySpendChart({ data, title }) {
   );
 }
 
-function ChartsPanel({ dailyStats, monthlyStats }) {
+function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -390,9 +390,9 @@ function ChartsPanel({ dailyStats, monthlyStats }) {
       {!collapsed && (
         <div className="charts-panel">
           <div className="charts-container">
-            <LineChart data={dailyStats} title="USAGE OVER TIME" />
-            <ModelChart data={dailyStats} title="MODEL SPLIT" />
-            <MonthlySpendChart data={monthlyStats} title="MONTHLY SPEND vs MAX PLAN" />
+            <LineChart data={dailyStats} title="USAGE OVER TIME" onSelectRange={onSelectRange} />
+            <ModelChart data={dailyStats} title="MODEL SPLIT" onSelectRange={onSelectRange} />
+            <MonthlySpendChart data={monthlyStats} title="MONTHLY SPEND vs MAX PLAN" onSelectRange={onSelectRange} />
           </div>
         </div>
       )}
@@ -402,7 +402,7 @@ function ChartsPanel({ dailyStats, monthlyStats }) {
 
 // --- Components ---
 
-function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount }) {
+function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange }) {
   return (
     <div className="top-bar">
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
@@ -424,6 +424,11 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
         </span>
       </div>
       <div className="top-bar-controls">
+        {(timeRange.from || timeRange.to) && (
+          <button className="timerange-chip" onClick={onClearRange}>
+            {timeRange.from} → {timeRange.to} ✕
+          </button>
+        )}
         <button
           className={`wip-filter-btn ${wipFilter ? 'active' : ''}`}
           onClick={onToggleWip}
@@ -841,8 +846,14 @@ function App() {
   const [sortDir, setSortDir] = useState('desc');
   const [wipFilter, setWipFilter] = useState(false);
   const [wipSessions, setWipSessions] = useState({});
+  const [timeRange, setTimeRange] = useState({ from: null, to: null });
 
-  // Load projects on mount, then stats + daily stats after cache is populated
+  // Returns '' or a from/to query string fragment, prefixed with sep ('?' or '&')
+  const rangeQS = (sep) => timeRange.from || timeRange.to
+    ? `${sep}${timeRange.from ? `from=${timeRange.from}` : ''}${timeRange.from && timeRange.to ? '&' : ''}${timeRange.to ? `to=${timeRange.to}` : ''}`
+    : '';
+
+  // Load projects on mount
   useEffect(() => {
     fetch('/api/projects')
       .then(r => r.json())
@@ -851,8 +862,7 @@ function App() {
         setLoading(false);
         // Default to All Projects view
         setSelectedProject('__all__');
-        // Now that projects are loaded (cache populated), fetch stats + wip
-        fetch('/api/stats').then(r => r.json()).then(setStats).catch(console.error);
+        // Now that projects are loaded (cache populated), fetch wip
         fetch('/api/wip').then(r => r.json()).then(setWipSessions).catch(console.error);
       })
       .catch(err => {
@@ -869,16 +879,27 @@ function App() {
     return () => clearInterval(poll);
   }, []);
 
-  // Load sessions + chart data when project changes
+  // Clear time range on Esc
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === 'Escape') setTimeRange({ from: null, to: null });
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // Load stats + sessions + chart data when project or time range changes
   useEffect(() => {
     if (!selectedProject) return;
     setLoadingSessions(true);
+
+    fetch(`/api/stats${rangeQS('?')}`).then(r => r.json()).then(setStats).catch(console.error);
 
     // Fetch sessions
     const sessionsUrl = selectedProject === '__all__'
       ? '/api/sessions/all'
       : `/api/projects/${selectedProject}/sessions`;
-    fetch(sessionsUrl)
+    fetch(`${sessionsUrl}${rangeQS('?')}`)
       .then(r => r.json())
       .then(data => {
         setSessions(data);
@@ -891,9 +912,9 @@ function App() {
 
     // Fetch chart data filtered by project
     const projectParam = selectedProject !== '__all__' ? `?project=${selectedProject}` : '';
-    fetch(`/api/daily-stats${projectParam}`).then(r => r.json()).then(setDailyStats).catch(console.error);
-    fetch(`/api/monthly-stats${projectParam}`).then(r => r.json()).then(setMonthlyStats).catch(console.error);
-  }, [selectedProject]);
+    fetch(`/api/daily-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setDailyStats).catch(console.error);
+    fetch(`/api/monthly-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setMonthlyStats).catch(console.error);
+  }, [selectedProject, timeRange]);
 
   // Search
   useEffect(() => {
@@ -986,7 +1007,8 @@ function App() {
   return (
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
-        wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount} />
+        wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
+        timeRange={timeRange} onClearRange={() => setTimeRange({ from: null, to: null })} />
       <div className="main-layout">
         <Sidebar
           projects={projects}
@@ -996,7 +1018,8 @@ function App() {
           wipCounts={wipCounts}
         />
         <div className="content">
-          <ChartsPanel dailyStats={dailyStats} monthlyStats={monthlyStats} />
+          <ChartsPanel dailyStats={dailyStats} monthlyStats={monthlyStats}
+            onSelectRange={(from, to) => setTimeRange({ from, to })} />
           {selectedProject === '__all__' ? (
             <>
               <div className="content-header">

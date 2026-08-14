@@ -105,6 +105,19 @@ body {
   color: var(--amber);
 }
 
+.timerange-chip {
+  background: rgba(77, 166, 255, 0.15);
+  border: 1px solid var(--blue);
+  color: var(--blue);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .search-input {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
