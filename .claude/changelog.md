@@ -9,6 +9,18 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ## [Unreleased]
 
+### Fixed
+
+- SonarQube quality gate cleanup — all 107 open findings + 1 security hotspot resolved (PR #4)
+  - Path-injection BLOCKERs in `server/scanner.js` fixed via `resolveWithin()` containment (sessionsDir within the Claude projects dir, scanPath within `$HOME`), with traversal tests; note: a scanPath outside `$HOME` now yields no projects
+  - Transcript parser decomposed (cognitive complexity 110 → under limit), pinned by 12 new characterization tests in `server/parser.test.js`; tag-strip regex rewritten backtracking-safe
+  - Express `x-powered-by` header disabled (version disclosure hotspot)
+  - Frontend accessibility: keyboard + `role="button"` on clickable divs/spans, explicit button `type` attributes
+  - User-influenced URL parts percent-encoded in `public/app.js` fetches
+  - Mechanical cleanups across server + frontend: `node:` import prefixes, optional chaining, `toSorted`/`localeCompare`, `Number.parseInt/parseFloat`, Sets for membership checks, flattened nested ternaries, stable React keys
+  - Test suite grew 81 → 96 tests
+  - Accepted-with-rationale in SonarCloud: `beads.js` S4036 (intentional PATH lookup of `bd`), 2× S6549 (existence checks on contained paths), 2× S8476 (same-origin, percent-encoded client URLs)
+
 ### Added
 
 - Story 6: Dynamic Pricing Service — fetches Claude API pricing from LiteLLM at startup and daily refresh
