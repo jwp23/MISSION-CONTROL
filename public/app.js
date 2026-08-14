@@ -608,11 +608,13 @@ const COLUMNS = [
   },
   {
     key: 'created', label: 'Created', className: 'col-date', prio: 1, sortField: 'firstTimestamp',
-    render: (s) => formatDate(s.firstTimestamp)
+    render: (s) => formatDate(s.firstTimestamp),
+    title: (s) => s.firstTimestamp ? new Date(s.firstTimestamp).toLocaleString() : undefined
   },
   {
     key: 'lastActive', label: 'Last Active', className: 'col-date', prio: 3, sortField: 'lastTimestamp',
-    render: (s) => formatDate(s.lastTimestamp)
+    render: (s) => formatDate(s.lastTimestamp),
+    title: (s) => s.lastTimestamp ? new Date(s.lastTimestamp).toLocaleString() : undefined
   },
   {
     key: 'sessionid', label: '', className: 'col-sessionid', prio: 2, sortField: null,
@@ -786,7 +788,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
           {sorted.map((s, i) => (
             <tr key={`${s.sessionId}-${i}`}>
               {columns.map(c => (
-                <td key={c.key} className={`${c.className} prio-${c.prio}`}>
+                <td key={c.key} className={`${c.className} prio-${c.prio}`} title={c.title ? c.title(s) : undefined}>
                   {c.render(s, ctx)}
                 </td>
               ))}

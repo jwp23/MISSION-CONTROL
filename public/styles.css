@@ -312,9 +312,15 @@ body {
 
 .session-table .col-date,
 .session-table th.col-date {
-  width: 120px;
+  width: 160px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.session-table td.col-date {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .session-table .col-summary,
@@ -340,30 +346,54 @@ body {
 
 .session-table .col-tokens,
 .session-table th.col-tokens {
-  width: 60px;
+  width: 80px;
   text-align: right;
   color: var(--text-secondary);
+}
+
+.session-table td.col-tokens {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .session-table .col-cost,
 .session-table th.col-cost {
-  width: 56px;
+  width: 88px;
   color: var(--amber);
   text-align: right;
 }
 
+.session-table td.col-cost {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 .session-table .col-duration,
 .session-table th.col-duration {
-  width: 64px;
+  width: 80px;
   text-align: right;
   color: var(--blue);
 }
 
+.session-table td.col-duration {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 .session-table .col-turns,
 .session-table th.col-turns {
-  width: 44px;
+  width: 64px;
   text-align: right;
   color: var(--text-secondary);
+}
+
+.session-table td.col-turns {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .session-table .col-sessionid,
