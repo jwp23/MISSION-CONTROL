@@ -36,13 +36,10 @@ function save(updates) {
 // Default pricing for unknown models — use Sonnet pricing as fallback
 function getPricing(model) {
   const cfg = get();
+  const { matchConfigPricing } = require('./pricing');
   // Try exact match first, then prefix match
-  if (cfg.pricing[model]) return cfg.pricing[model];
-  for (const key of Object.keys(cfg.pricing)) {
-    if (model.startsWith(key.split('-').slice(0, -1).join('-'))) {
-      return cfg.pricing[key];
-    }
-  }
+  const matched = matchConfigPricing(cfg.pricing, model);
+  if (matched) return matched;
   // Fallback to Sonnet pricing
   return cfg.pricing['claude-sonnet-4-6'] || { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
 }

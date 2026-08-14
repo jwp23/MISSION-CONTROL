@@ -36,6 +36,16 @@ function appendIfChanged(history, snapshot, dateStr) {
   return true;
 }
 
+function matchConfigPricing(table, model) {
+  if (table[model]) return table[model];
+  for (const key of Object.keys(table)) {
+    if (model.startsWith(key.split('-').slice(0, -1).join('-'))) {
+      return table[key];
+    }
+  }
+  return null;
+}
+
 function resolvePricing(history, model, timestampMs) {
   const entries = history.entries;
   if (!entries.length) return null;
@@ -105,14 +115,35 @@ function _resetForTesting() {
   moduleHistoryPath = null;
 }
 
+let testConfig = null;
+
+function _setConfigForTest(c) {
+  testConfig = c;
+}
+
+function getPricing(model, timestampMs) {
+  const cfg = testConfig || require('./config').get();
+  if (cfg.pricing && Object.keys(cfg.pricing).length) {
+    const p = matchConfigPricing(cfg.pricing, model);
+    if (p) return p;
+  }
+  const resolved = resolvePricing(getHistory(), model, timestampMs);
+  if (resolved) return resolved;
+  const latest = getHistory().entries[getHistory().entries.length - 1];
+  return (latest && latest.prices['claude-sonnet-5']) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
 module.exports = {
   LITELLM_URL,
   normalizeLitellm,
   appendIfChanged,
+  matchConfigPricing,
   resolvePricing,
+  getPricing,
   init,
   getHistory,
   refresh,
   startAutoRefresh,
-  _resetForTesting
+  _resetForTesting,
+  _setConfigForTest
 };
