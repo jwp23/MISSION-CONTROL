@@ -11,6 +11,14 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ### Added
 
+- Story 6: Dynamic Pricing Service — fetches Claude API pricing from LiteLLM at startup and daily refresh
+  - `server/pricing.js` fetches community pricing JSON at startup and every 24h while running
+  - Prices stored as dated entries in `pricing-history.json` (gitignored, seeded from `server/pricing-seed.json`)
+  - Historical sessions resolved to pricing in effect on their date (not repriced at current rates)
+  - Offline-safe: falls back to last known history if LiteLLM unreachable
+  - `pricing` block in `config.json` now acts as manual override only (optional, no longer required)
+  - `config.example.json` no longer includes pricing block; tests pass with D3 fallback
+
 - Story 2: Configurable Terminal Emulator for Session Launch — all 6 acceptance criteria implemented
   - `config.example.json` accepts `terminal` key (default: `ghostty`)
   - `restore.js` refactored with `TERMINALS` map, `buildLaunchArgs()` (pure), `findBinary()` (PATH check)
@@ -23,6 +31,7 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ### Fixed
 
+- Historical sessions were repriced at current rates; costs now resolve by session date (Story 6)
 - Shell injection in `restore.js`: `cwd` and `sessionId` from HTTP request were interpolated bare into `bash -c` strings; now shell-quoted via `shellQuote()`
 - Spawn promise race: `resolve()` fired synchronously before spawn `'error'` event could settle, causing silent false-success; now deferred via `process.nextTick` with a `settled` flag
 - Fetch `.catch()` in Launch button silently swallowed network errors; now shows error feedback
