@@ -12,6 +12,12 @@ describe('parseRange', () => {
     assert.deepEqual(parseRange({}), { from: null, to: null });
     assert.deepEqual(parseRange({ from: 'garbage' }), { from: null, to: null });
   });
+  it('rejects day overflow dates (2026-02-30)', () => {
+    assert.deepEqual(parseRange({ from: '2026-02-30' }), { from: null, to: null });
+  });
+  it('rejects month overflow dates (2026-13-01)', () => {
+    assert.deepEqual(parseRange({ to: '2026-13-01' }), { from: null, to: null });
+  });
 });
 
 describe('filterSessions', () => {

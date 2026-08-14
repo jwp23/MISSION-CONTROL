@@ -7,7 +7,14 @@ function toMs(ts) {
 function parseDay(s, endOfDay) {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   const n = Date.parse(s + (endOfDay ? 'T23:59:59.999Z' : 'T00:00:00.000Z'));
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return null;
+  // Validate that components round-trip (reject day/month overflow like 02-30, 13-01)
+  const d = new Date(n);
+  const [year, month, day] = s.split('-').map(Number);
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() + 1 !== month || d.getUTCDate() !== day) {
+    return null;
+  }
+  return n;
 }
 function parseRange(query) {
   return { from: parseDay(query.from, false), to: parseDay(query.to, true) };
