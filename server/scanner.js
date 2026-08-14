@@ -20,8 +20,7 @@ function encodeProjectPath(projectPath) {
 function resolveWithin(baseDir, candidate) {
   const base = path.resolve(baseDir);
   const resolved = path.resolve(base, candidate);
-  const relative = path.relative(base, resolved);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) return null;
   return resolved;
 }
 
