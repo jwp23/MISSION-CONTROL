@@ -1,4 +1,4 @@
-const { exec, execFileSync, spawn } = require('child_process');
+const { execFile, execFileSync, spawn } = require('child_process');
 
 const TERMINALS = {
   ghostty:       { bin: 'ghostty',     execFlag: '-e', full: true },
@@ -81,7 +81,7 @@ function restoreSession(sessionId, cwd, terminal = 'ghostty') {
 
   return new Promise((resolve, reject) => {
     if (launch.type === 'applescript') {
-      exec(`osascript -e '${launch.script.replace(/'/g, "'\"'\"'")}'`, (err) => {
+      execFile('osascript', ['-e', launch.script], (err) => {
         if (err) {
           reject(new Error(`Failed to restore session: ${err.message}`));
         } else {
