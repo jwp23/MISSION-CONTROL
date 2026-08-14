@@ -55,9 +55,18 @@ function shortDate(dateStr) {
 
 // --- Chart Components ---
 
-function useDragSelect(padL, plotW, count, onDone) {
+// mode 'point' maps x to the nearest of `count` evenly-spaced points (plotW / (count-1)
+// spacing) — matches charts that plot vertices, e.g. LineChart/ModelChart.
+// mode 'band' maps x to the band it falls in (plotW / count spacing) — matches charts
+// that render bars centered in equal-width bands, e.g. MonthlySpendChart. Using 'point'
+// mode against a bar chart systematically misattributes x positions near band edges,
+// since bar centers (plotW/count spacing) don't line up with point positions
+// (plotW/(count-1) spacing).
+function useDragSelect(padL, plotW, count, onDone, { mode = 'point' } = {}) {
   const [drag, setDrag] = useState(null); // {x0, x1} in viewBox units
-  const toIdx = (x) => Math.max(0, Math.min(count - 1, Math.round(((x - padL) / plotW) * (count - 1))));
+  const toIdx = (x) => mode === 'band'
+    ? Math.max(0, Math.min(count - 1, Math.floor((x - padL) / (plotW / count))))
+    : Math.max(0, Math.min(count - 1, Math.round(((x - padL) / plotW) * (count - 1))));
   const vbX = (e) => {
     const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
     const ctm = svg.getScreenCTM();
@@ -71,7 +80,7 @@ function useDragSelect(padL, plotW, count, onDone) {
     onMouseUp: () => {
       if (drag && Math.abs(drag.x1 - drag.x0) > 4 && count > 1) {
         const [a, b] = [toIdx(Math.min(drag.x0, drag.x1)), toIdx(Math.max(drag.x0, drag.x1))];
-        if (a !== b) onDone(a, b);
+        onDone(a, b);
       }
       setDrag(null);
     },
@@ -397,7 +406,7 @@ function MonthlySpendChart({ data, title, onSelectRange }) {
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const lastDay = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`; };
-  const ds = useDragSelect(padL, plotW, data ? data.length : 0, (a, b) => onSelectRange(`${data[a].month}-01`, lastDay(data[b].month)));
+  const ds = useDragSelect(padL, plotW, data ? data.length : 0, (a, b) => onSelectRange(`${data[a].month}-01`, lastDay(data[b].month)), { mode: 'band' });
 
   if (!data || data.length === 0) return null;
 
