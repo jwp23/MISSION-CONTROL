@@ -9,6 +9,17 @@ const config = require('./config');
 
 // --- Test Fixtures ---
 
+// Fixtures live under a fake Claude dir so the scanner's path containment
+// (sessionsDir must stay within {claudeDir}/projects) accepts them.
+const fakeClaudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-claude-'));
+const fixtureRoot = path.join(fakeClaudeDir, 'projects');
+fs.mkdirSync(fixtureRoot);
+
+function loadTestConfig() {
+  config.load();
+  config.get().claudeDir = fakeClaudeDir;
+}
+
 function makeAssistantEntry(model, inputTokens, outputTokens, opts = {}) {
   return JSON.stringify({
     type: 'assistant',
@@ -70,9 +81,9 @@ describe('listSessionFiles', () => {
   let tmpDir;
 
   before(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-'));
+    tmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-test-'));
     // Ensure config is loaded so parser/cost don't blow up
-    config.load();
+    loadTestConfig();
   });
 
   after(() => {
@@ -93,7 +104,7 @@ describe('listSessionFiles', () => {
   });
 
   it('discovers subagent .jsonl files alongside parent', () => {
-    const subTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-sub-'));
+    const subTmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-test-sub-'));
     const sessionsDir = createFixture(subTmpDir, {
       parentLines: [
         makeUserEntry('hello'),
@@ -122,13 +133,59 @@ describe('listSessionFiles', () => {
   });
 });
 
+describe('path traversal containment', () => {
+  let outsideDir;
+
+  before(() => {
+    loadTestConfig();
+    // A real session file OUTSIDE the allowed base — rejection must be
+    // observable, not just an empty directory.
+    outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-outside-'));
+    fs.writeFileSync(
+      path.join(outsideDir, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl'),
+      makeUserEntry('secret') + '\n' + makeAssistantEntry('claude-opus-4-6', 1000, 500) + '\n'
+    );
+  });
+
+  after(() => {
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it('rejects a sessionsDir that escapes the projects dir via ../ segments', () => {
+    // Mimics an encodedPath like '../../tmp/mc-outside-x' joined onto the base
+    const traversal = path.join(fixtureRoot, path.relative(fixtureRoot, outsideDir));
+    const files = scanner.listSessionFiles(traversal);
+    assert.deepEqual(files, [], 'traversal path escaping the base must yield no files');
+  });
+
+  it('rejects an absolute sessionsDir outside the projects dir', () => {
+    const files = scanner.listSessionFiles(outsideDir);
+    assert.deepEqual(files, [], 'absolute path outside the base must yield no files');
+  });
+
+  it('still accepts a sessionsDir inside the projects dir', () => {
+    const tmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-contained-'));
+    const sessionsDir = createFixture(tmpDir, {
+      parentLines: [
+        makeUserEntry('hello'),
+        makeAssistantEntry('claude-opus-4-6', 1000, 500)
+      ]
+    });
+
+    const files = scanner.listSessionFiles(sessionsDir);
+    assert.equal(files.length, 1);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+});
+
 describe('subagent metric merging', () => {
   let tmpDir;
   let sessionsDir;
 
   before(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-merge-'));
-    config.load();
+    tmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-test-merge-'));
+    loadTestConfig();
 
     sessionsDir = createFixture(tmpDir, {
       parentLines: [
@@ -213,7 +270,7 @@ describe('subagent metric merging', () => {
   });
 
   it('does not set subagentCount on sessions with no subagents', async () => {
-    const noSubTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-nosub-'));
+    const noSubTmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-test-nosub-'));
     const noSubSessionsDir = createFixture(noSubTmpDir, {
       parentLines: [
         makeUserEntry('solo session', { sessionId: 'sess-nosub' }),
@@ -271,8 +328,8 @@ describe('primaryModel selection', () => {
   let tmpDir;
 
   before(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-primary-'));
-    config.load();
+    tmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-test-primary-'));
+    loadTestConfig();
   });
 
   after(() => {
@@ -305,7 +362,7 @@ describe('primaryModel selection', () => {
   });
 
   it('falls back to first model when no token data', async () => {
-    const subTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-test-primary2-'));
+    const subTmpDir = fs.mkdtempSync(path.join(fixtureRoot, 'mc-test-primary2-'));
     const uuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
     const sessionsDir = path.join(subTmpDir, 'sessions');
     fs.mkdirSync(sessionsDir, { recursive: true });
