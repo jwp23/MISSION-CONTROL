@@ -73,3 +73,16 @@ describe('init and refresh', () => {
     assert.equal(await refresh(fakeFetch), false);
   });
 });
+
+describe('getPricing with lazy init', () => {
+  const { getPricing, _resetForTesting, _setConfigForTest } = require('./pricing');
+
+  it('returns seed pricing without explicit init when config is empty', () => {
+    _resetForTesting();
+    _setConfigForTest({});
+    const price = getPricing('claude-opus-5', null);
+    assert.ok(price, 'getPricing should return a price object');
+    assert.equal(price.input, 5, 'should use seed pricing for opus input');
+    assert.equal(price.output, 25, 'should use seed pricing for opus output');
+  });
+});

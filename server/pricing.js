@@ -64,6 +64,19 @@ function resolvePricing(history, model, timestampMs) {
   return best ? entry.prices[best] : null;
 }
 
+function ensureHistory() {
+  try {
+    return getHistory();
+  } catch {
+    try {
+      init({});
+      return getHistory();
+    } catch {
+      return { entries: [] };
+    }
+  }
+}
+
 function init(opts = {}) {
   moduleHistoryPath = opts.historyPath || path.join(__dirname, '..', 'pricing-history.json');
   const seedPath = opts.seedPath || path.join(__dirname, 'pricing-seed.json');
@@ -127,9 +140,10 @@ function getPricing(model, timestampMs) {
     const p = matchConfigPricing(cfg.pricing, model);
     if (p) return p;
   }
-  const resolved = resolvePricing(getHistory(), model, timestampMs);
+  const history = ensureHistory();
+  const resolved = resolvePricing(history, model, timestampMs);
   if (resolved) return resolved;
-  const latest = getHistory().entries[getHistory().entries.length - 1];
+  const latest = history.entries[history.entries.length - 1];
   return (latest && latest.prices['claude-sonnet-5']) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
 
