@@ -31,7 +31,7 @@ Purpose: Running log of all notable changes, features, and workflow updates.
   - 19 tests covering all terminals, platform routing, error paths, PATH validation, and injection prevention
 - Story 3: Readable Adaptive Layout — responsive column visibility and typography baseline increase
   - Base type scale raised to 14px; no text rendered below ~11px (including chart labels)
-  - Session table uses priority-based column config; lower-priority columns hide below 1440px (chart area) and 1280px (table area)
+  - Session table uses priority-based column config; both 1440px and 1280px breakpoints govern the session table's column priorities, hiding lower-priority columns progressively
   - Columns remain sortable and searchable when hidden; responsive breakpoints ensure legibility on laptops and desktops
 - Story 4: Global Time-Window Selection — Grafana-style date range filtering
   - Drag horizontally on any chart to select a date window; all dashboard stats (stat tiles, charts, session table) instantly filter to range

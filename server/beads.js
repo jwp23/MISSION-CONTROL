@@ -4,8 +4,9 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { inRange } = require('./timerange');
 
-const CACHE_TTL_MS = 60_000;
-const cache = new Map(); // projectPath -> { at, records }
+const SUCCESS_TTL_MS = 60_000;
+const ERROR_TTL_MS = 5_000; // keep transient bd failures from being reported as "zero beads" for a full minute
+const cache = new Map(); // projectPath -> { at, records, ok }
 
 function hasBeads(projectPath) {
   return fs.existsSync(path.join(projectPath, '.beads'));
@@ -32,16 +33,29 @@ function countBeads(records, range) {
   return { created, closed };
 }
 
-function getBeadRecords(projectPath) {
-  const hit = cache.get(projectPath);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return Promise.resolve(hit.records);
+function runExport(projectPath) {
   return new Promise((resolve) => {
     execFile('bd', ['export', '-'], { cwd: projectPath, timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
-      const records = err ? [] : parseExport(stdout);
-      cache.set(projectPath, { at: Date.now(), records });
-      resolve(records);
+      resolve({ err, stdout });
     });
   });
+}
+
+// `now` and `runner` are injectable seams for tests; production callers use the defaults.
+async function getBeadRecords(projectPath, { now = Date.now, runner = runExport } = {}) {
+  const hit = cache.get(projectPath);
+  if (hit) {
+    const ttl = hit.ok ? SUCCESS_TTL_MS : ERROR_TTL_MS;
+    if (now() - hit.at < ttl) return hit.records;
+  }
+  const { err, stdout } = await runner(projectPath);
+  const ok = !err;
+  if (!ok) {
+    console.warn(`[beads] bd export failed for ${projectPath}: ${err.message}`);
+  }
+  const records = ok ? parseExport(stdout) : [];
+  cache.set(projectPath, { at: now(), records, ok });
+  return records;
 }
 
 module.exports = { hasBeads, parseExport, countBeads, getBeadRecords };

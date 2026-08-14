@@ -618,13 +618,13 @@ body {
 
 .chart-label {
   font-family: var(--font);
-  font-size: 10px;
+  font-size: 14px;
   fill: var(--text-dim);
 }
 
 .chart-axis-label {
   font-family: var(--font);
-  font-size: 8px;
+  font-size: 14px;
   fill: var(--text-dim);
 }
 

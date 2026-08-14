@@ -56,9 +56,10 @@ function useDragSelect(padL, plotW, count, onDone) {
   const [drag, setDrag] = useState(null); // {x0, x1} in viewBox units
   const toIdx = (x) => Math.max(0, Math.min(count - 1, Math.round(((x - padL) / plotW) * (count - 1))));
   const vbX = (e) => {
-    const svg = e.currentTarget.closest('svg') || e.currentTarget;
-    const r = svg.getBoundingClientRect();
-    return ((e.clientX - r.left) / r.width) * 500; // viewBox width is 500 in all charts
+    const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return 0;
+    return new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse()).x;
   };
   return {
     drag,
@@ -103,8 +104,8 @@ function LineChart({ data, title, onSelectRange }) {
   const tokenArea = `M${tokenPoints[0]} ${tokenPoints.join(' L')} L${xAt(data.length - 1)},${padT + plotH} L${padL},${padT + plotH} Z`;
   const costArea = `M${costPoints[0]} ${costPoints.join(' L')} L${xAt(data.length - 1)},${padT + plotH} L${padL},${padT + plotH} Z`;
 
-  // Y-axis ticks for tokens
-  const yTicks = 5;
+  // Y-axis ticks for tokens (kept low so the larger label font doesn't crowd gridlines)
+  const yTicks = 3;
   const tokenStep = maxTokens / yTicks;
 
   const labelInterval = data.length > 30 ? 7 : data.length > 15 ? 3 : 1;
@@ -260,7 +261,7 @@ function ModelChart({ data, title, onSelectRange }) {
         onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
         onMouseLeave={() => { setTooltip(null); ds.onCancel(); }}>
         {/* Y-axis gridlines */}
-        {[0, 25, 50, 75, 100].map(pct => (
+        {[0, 50, 100].map(pct => (
           <g key={pct}>
             <line x1={padL} y1={yAt(pct)} x2={W - padR} y2={yAt(pct)} stroke="var(--border)" strokeWidth="0.5" />
             <text x={padL - 4} y={yAt(pct) + 3} textAnchor="end" className="chart-axis-label">
@@ -329,8 +330,15 @@ function MonthlySpendChart({ data, title, onSelectRange }) {
 
   const xAt = (i) => padL + barGap * i + barGap / 2;
 
-  // Y-axis ticks
-  const yStep = maxCost <= 200 ? 50 : maxCost <= 500 ? 100 : 250;
+  // Y-axis ticks — target ~4 gridlines regardless of scale so the larger label
+  // font (needed to hit the 11px effective floor) doesn't crowd the axis.
+  const niceStep = (raw) => {
+    const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / magnitude;
+    const niceNorm = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    return niceNorm * magnitude;
+  };
+  const yStep = niceStep(maxCost / 4);
   const yTicks = [];
   for (let v = 0; v <= maxCost; v += yStep) yTicks.push(v);
 
@@ -923,10 +931,13 @@ function App() {
     return () => clearInterval(poll);
   }, []);
 
-  // Clear time range on Esc
+  // Clear time range on Esc (ignored inside inputs/textareas, and when no window is set)
   useEffect(() => {
     const h = (e) => {
-      if (e.key === 'Escape') setTimeRange({ from: null, to: null });
+      if (e.key !== 'Escape') return;
+      const tag = e.target && e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r);
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -935,9 +946,10 @@ function App() {
   // Load stats + sessions + chart data when project or time range changes
   useEffect(() => {
     if (!selectedProject) return;
+    let cancelled = false;
     setLoadingSessions(true);
 
-    fetch(`/api/stats${rangeQS('?')}`).then(r => r.json()).then(setStats).catch(console.error);
+    fetch(`/api/stats${rangeQS('?')}`).then(r => r.json()).then(data => { if (!cancelled) setStats(data); }).catch(console.error);
 
     // Fetch sessions
     const sessionsUrl = selectedProject === '__all__'
@@ -946,20 +958,24 @@ function App() {
     fetch(`${sessionsUrl}${rangeQS('?')}`)
       .then(r => r.json())
       .then(data => {
+        if (cancelled) return;
         setSessions(data);
         setLoadingSessions(false);
       })
       .catch(err => {
+        if (cancelled) return;
         console.error('Failed to load sessions:', err);
         setLoadingSessions(false);
       });
 
     // Fetch chart data filtered by project
     const projectParam = selectedProject !== '__all__' ? `?project=${selectedProject}` : '';
-    fetch(`/api/daily-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setDailyStats).catch(console.error);
-    fetch(`/api/monthly-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setMonthlyStats).catch(console.error);
-    fetch(`/api/beads${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setBeadsStats).catch(() => setBeadsStats(null));
-  }, [selectedProject, timeRange]);
+    fetch(`/api/daily-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setDailyStats(data); }).catch(console.error);
+    fetch(`/api/monthly-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setMonthlyStats(data); }).catch(console.error);
+    fetch(`/api/beads${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setBeadsStats(data); }).catch(() => { if (!cancelled) setBeadsStats(null); });
+
+    return () => { cancelled = true; };
+  }, [selectedProject, timeRange.from, timeRange.to]);
 
   // Search
   useEffect(() => {
@@ -968,13 +984,13 @@ function App() {
       return;
     }
     const timeout = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}${rangeQS('&')}`)
         .then(r => r.json())
         .then(setSearchResults)
         .catch(console.error);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [searchQuery]);
+  }, [searchQuery, timeRange.from, timeRange.to]);
 
   const handleSort = useCallback((field, dir) => {
     setSortField(field);
@@ -1053,7 +1069,7 @@ function App() {
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
-        timeRange={timeRange} onClearRange={() => setTimeRange({ from: null, to: null })} beads={beadsStats} />
+        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={beadsStats} />
       <div className="main-layout">
         <Sidebar
           projects={projects}

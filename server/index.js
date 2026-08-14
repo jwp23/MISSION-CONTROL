@@ -227,7 +227,9 @@ app.get('/api/search', async (req, res) => {
       }
     }
 
-    res.json(results.slice(0, 50)); // Limit results
+    const range = timerange.parseRange(req.query);
+    const filtered = timerange.filterSessions(results, range);
+    res.json(filtered.slice(0, 50)); // Limit results
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
