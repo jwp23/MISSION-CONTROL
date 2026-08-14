@@ -38,10 +38,13 @@ function formatDate(ts) {
 
 function shortModel(model) {
   if (!model) return '-';
-  if (model.includes('opus')) return 'opus';
-  if (model.includes('sonnet')) return 'sonnet';
-  if (model.includes('haiku')) return 'haiku';
-  return model.split('-').slice(-1)[0];
+  const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable', 'mythos'];
+  const parts = model.split('-').filter(p => p !== 'claude' && !/^\d{8}$/.test(p)); // drop 'claude' and date suffixes like 20251001
+  const family = parts.find(p => FAMILIES.includes(p));
+  const nums = parts.filter(p => /^\d+$/.test(p));
+  if (!family) return model;
+  const name = family[0].toUpperCase() + family.slice(1);
+  return nums.length ? `${name} ${nums.join('.')}` : name;
 }
 
 function shortDate(dateStr) {
