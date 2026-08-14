@@ -892,7 +892,21 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
 }
 
 function Rollup({ aggregate, beads }) {
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = localStorage.getItem('rollupCollapsed');
+    if (stored !== null) return stored === 'true';
+    return window.matchMedia('(max-height: 820px)').matches;
+  });
+
   if (!aggregate) return null;
+
+  const toggle = () => {
+    setCollapsed(c => {
+      const next = !c;
+      localStorage.setItem('rollupCollapsed', String(next));
+      return next;
+    });
+  };
 
   const models = Object.entries(aggregate.tokensByModel || {});
   const subModels = Object.entries(aggregate.subagentTokensByModel || {});
@@ -900,70 +914,90 @@ function Rollup({ aggregate, beads }) {
   const totalTokens = models.reduce((sum, [, m]) => sum + m.input + m.output + m.cacheRead + m.cacheWrite, 0);
   const totalSubTokens = subModels.reduce((sum, [, m]) => sum + m.input + m.output + m.cacheRead + m.cacheWrite, 0);
   const totalSubCost = subModels.reduce((sum, [, m]) => sum + m.cost, 0);
+  const hasBeads = beads && beads.hasBeads;
+
+  const digestParts = [
+    `${formatTokens(totalTokens)} tok`,
+    `${aggregate.totalSubagentCount || 0} subs`,
+  ];
+  if (hasBeads) {
+    digestParts.push(`beads ${beads.closed}/${beads.created}`);
+    digestParts.push(`$/bead ${typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}`);
+  }
+  digestParts.push(formatDuration(aggregate.totalDurationMs));
 
   return (
-    <div className="rollup">
-      <div className="rollup-section">
-        <div className="rollup-title">Tokens by Model</div>
-        <div className="rollup-list">
-          {models.map(([model, tokens]) => {
-            const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
-            const pct = totalTokens > 0 ? (modelTotal / totalTokens * 100) : 0;
-            return (
-              <div className="model-bar" key={model}>
-                <div className="model-bar-track">
-                  <div className="model-bar-fill" style={{ width: Math.max(pct, 1) + '%' }}></div>
-                </div>
-                <span className="model-bar-label">
-                  <span className="model-name">{shortModel(model)}</span> {formatTokens(modelTotal)} ({pct.toFixed(0)}%) <span className="rollup-value cost">{formatCost(tokens.cost)}</span>
-                </span>
-              </div>
-            );
-          })}
-        </div>
+    <>
+      <div className="rollup-toggle" onClick={toggle}>
+        <span className={`rollup-toggle-arrow ${collapsed ? 'collapsed' : ''}`}>▼</span>
+        ROLLUP
+        {collapsed && <span className="rollup-digest">{digestParts.join(' · ')}</span>}
       </div>
-      {aggregate.totalSubagentCount > 0 && (
+      {!collapsed && (
+        <div className="rollup">
         <div className="rollup-section">
-          <div className="rollup-title">Subagents</div>
-          <div className="subagent-summary">
-            {aggregate.totalSubagentCount} subagent{aggregate.totalSubagentCount !== 1 ? 's' : ''} · {formatTokens(totalSubTokens)} tokens · {formatCost(totalSubCost)}
-          </div>
+          <div className="rollup-title">Tokens by Model</div>
           <div className="rollup-list">
-            {subModels.map(([model, tokens]) => {
+            {models.map(([model, tokens]) => {
               const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
-              const count = subCountByModel[model] || 0;
+              const pct = totalTokens > 0 ? (modelTotal / totalTokens * 100) : 0;
               return (
-                <div className="subagent-model-row" key={model}>
-                  <span className="model-name">{shortModel(model)}</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · <span className="rollup-value cost">{formatCost(tokens.cost)}</span>
+                <div className="model-bar" key={model}>
+                  <div className="model-bar-track">
+                    <div className="model-bar-fill" style={{ width: Math.max(pct, 1) + '%' }}></div>
+                  </div>
+                  <span className="model-bar-label">
+                    <span className="model-name">{shortModel(model)}</span> {formatTokens(modelTotal)} ({pct.toFixed(0)}%) <span className="rollup-value cost">{formatCost(tokens.cost)}</span>
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
-      )}
-      {beads && beads.hasBeads && (
+        {aggregate.totalSubagentCount > 0 && (
+          <div className="rollup-section">
+            <div className="rollup-title">Subagents</div>
+            <div className="subagent-summary">
+              {aggregate.totalSubagentCount} subagent{aggregate.totalSubagentCount !== 1 ? 's' : ''} · {formatTokens(totalSubTokens)} tokens · {formatCost(totalSubCost)}
+            </div>
+            <div className="rollup-list">
+              {subModels.map(([model, tokens]) => {
+                const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+                const count = subCountByModel[model] || 0;
+                return (
+                  <div className="subagent-model-row" key={model}>
+                    <span className="model-name">{shortModel(model)}</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · <span className="rollup-value cost">{formatCost(tokens.cost)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {beads && beads.hasBeads && (
+          <div className="rollup-section">
+            <div className="rollup-title">Beads</div>
+            <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
+            <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
+            <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+          </div>
+        )}
         <div className="rollup-section">
-          <div className="rollup-title">Beads</div>
-          <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
-          <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
-          <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+          <div className="rollup-title">Totals</div>
+          <div><span className="rollup-label">Input</span> <span className="rollup-value">{formatTokens(aggregate.totalInputTokens)}</span></div>
+          <div><span className="rollup-label">Output</span> <span className="rollup-value">{formatTokens(aggregate.totalOutputTokens)}</span></div>
+          <div><span className="rollup-label">Cache Read</span> <span className="rollup-value">{formatTokens(aggregate.totalCacheReadTokens)}</span></div>
+          <div><span className="rollup-label">Cache Write</span> <span className="rollup-value">{formatTokens(aggregate.totalCacheWriteTokens)}</span></div>
+          <div><span className="rollup-label">Tool Calls</span> <span className="rollup-value">{aggregate.totalToolCalls}</span></div>
         </div>
+        <div className="rollup-section">
+          <div className="rollup-title">Time</div>
+          <div><span className="rollup-label">Claude Time</span> <span className="rollup-value time">{formatDuration(aggregate.totalDurationMs)}</span></div>
+          <div><span className="rollup-label">Est. Manual</span> <span className="rollup-value cost">{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
+          <div><span className="rollup-label">Time Saved</span> <span className="rollup-value green">{formatDuration(aggregate.timeSavedMs)}</span></div>
+        </div>
+      </div>
       )}
-      <div className="rollup-section">
-        <div className="rollup-title">Totals</div>
-        <div><span className="rollup-label">Input</span> <span className="rollup-value">{formatTokens(aggregate.totalInputTokens)}</span></div>
-        <div><span className="rollup-label">Output</span> <span className="rollup-value">{formatTokens(aggregate.totalOutputTokens)}</span></div>
-        <div><span className="rollup-label">Cache Read</span> <span className="rollup-value">{formatTokens(aggregate.totalCacheReadTokens)}</span></div>
-        <div><span className="rollup-label">Cache Write</span> <span className="rollup-value">{formatTokens(aggregate.totalCacheWriteTokens)}</span></div>
-        <div><span className="rollup-label">Tool Calls</span> <span className="rollup-value">{aggregate.totalToolCalls}</span></div>
-      </div>
-      <div className="rollup-section">
-        <div className="rollup-title">Time</div>
-        <div><span className="rollup-label">Claude Time</span> <span className="rollup-value time">{formatDuration(aggregate.totalDurationMs)}</span></div>
-        <div><span className="rollup-label">Est. Manual</span> <span className="rollup-value cost">{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
-        <div><span className="rollup-label">Time Saved</span> <span className="rollup-value green">{formatDuration(aggregate.timeSavedMs)}</span></div>
-      </div>
-    </div>
+    </>
   );
 }
 
