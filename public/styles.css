@@ -215,10 +215,13 @@ body {
 /* Project column in session table */
 .session-table .col-project,
 .session-table th.col-project {
-  width: 100px;
+  width: 130px;
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.session-table td.col-project {
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -310,6 +313,12 @@ body {
 .session-table .col-status,
 .session-table th.col-status { width: 24px; }
 
+.session-table td.col-status {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 .session-table .col-date,
 .session-table th.col-date {
   width: 160px;
@@ -332,16 +341,28 @@ body {
 
 .session-table .col-model,
 .session-table th.col-model {
-  width: 70px;
+  width: 80px;
   font-size: 12px;
+}
+
+.session-table td.col-model {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .session-table .col-subs,
 .session-table th.col-subs {
-  width: 36px;
+  width: 50px;
   text-align: right;
   color: var(--blue);
   font-size: 12px;
+}
+
+.session-table td.col-subs {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .session-table .col-tokens,
@@ -398,16 +419,28 @@ body {
 
 .session-table .col-sessionid,
 .session-table th.col-sessionid {
-  width: 62px;
+  width: 73px;
   text-align: center;
   padding: 2px 4px;
 }
 
+.session-table td.col-sessionid {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 .session-table .col-actions,
 .session-table th.col-actions {
-  width: 48px;
+  width: 61px;
   text-align: center;
   padding: 2px 4px;
+}
+
+.session-table td.col-actions {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 @media (max-width: 1439px) {
