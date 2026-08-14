@@ -367,6 +367,14 @@ body {
   padding: 2px 4px;
 }
 
+@media (max-width: 1439px) {
+  .session-table .prio-3 { display: none; }
+}
+
+@media (max-width: 1279px) {
+  .session-table .prio-2 { display: none; }
+}
+
 /* Status Dot */
 .col-status {
   width: 28px;

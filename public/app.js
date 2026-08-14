@@ -543,6 +543,109 @@ function EditableSummary({ sessionId, summary, onSave }) {
   );
 }
 
+const COLUMNS = [
+  {
+    key: 'status', label: '', className: 'col-status', prio: 1, sortField: null,
+    render: (s, ctx) => (
+      s.sessionId && <StatusDot sessionId={s.sessionId} status={s.status} onChange={ctx.onStatusChange} />
+    )
+  },
+  {
+    key: 'created', label: 'Created', className: 'col-date', prio: 1, sortField: 'firstTimestamp',
+    render: (s) => formatDate(s.firstTimestamp)
+  },
+  {
+    key: 'lastActive', label: 'Last Active', className: 'col-date', prio: 3, sortField: 'lastTimestamp',
+    render: (s) => formatDate(s.lastTimestamp)
+  },
+  {
+    key: 'sessionid', label: '', className: 'col-sessionid', prio: 2, sortField: null,
+    render: (s, ctx) => (
+      s.sessionId && (
+        <button
+          className={`sessionid-btn ${s.sessionName ? 'named' : ''} ${ctx.copied === s.sessionId ? 'copied' : ''}`}
+          onClick={(e) => { e.stopPropagation(); ctx.handleCopyId(s.sessionId); }}
+          title={s.sessionName ? `${s.sessionName}\n${s.sessionId}` : s.sessionId}
+        >
+          {ctx.copied === s.sessionId ? 'copied' : (s.sessionName || 'sessionid')}
+        </button>
+      )
+    )
+  },
+  {
+    key: 'actions', label: '', className: 'col-actions', prio: 1, sortField: null,
+    render: (s, ctx) => (
+      s.sessionId && (() => {
+        const msg = ctx.restoreMsg && ctx.restoreMsg.sessionId === s.sessionId ? ctx.restoreMsg : null;
+        const isRestoring = ctx.restoring === s.sessionId;
+
+        if (msg && msg.type === 'error') {
+          return <button className="restore-btn restore-error-btn"
+            title={msg.text}
+            onClick={(e) => { e.stopPropagation(); ctx.setRestoreMsg(null); }}
+          >Error</button>;
+        }
+
+        if (msg && msg.type === 'partial') {
+          return <button className={`restore-btn restore-copy-btn${msg.copied ? ' copied' : ''}`}
+            title={`Click to copy: ${msg.text}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(msg.text).then(() => {
+                ctx.setRestoreMsg({ ...msg, copied: true });
+                setTimeout(() => ctx.setRestoreMsg(null), 2000);
+              });
+            }}
+          >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
+        }
+
+        return <button
+          className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
+          onClick={(e) => { e.stopPropagation(); ctx.handleRestore(s.sessionId, s.projectPath); }}
+          title={`Resume session\n${s.sessionId}`}
+          disabled={isRestoring}
+        >{isRestoring ? '...' : 'Launch'}</button>;
+      })()
+    )
+  },
+  {
+    key: 'project', label: 'Project', className: 'col-project', prio: 1, sortField: 'projectName',
+    render: (s, ctx) => (
+      <span className="project-link" onClick={(e) => { e.stopPropagation(); ctx.onSelectProject && ctx.onSelectProject(s.encodedPath); }}>
+        {s.projectName || '-'}
+      </span>
+    )
+  },
+  {
+    key: 'summary', label: 'Summary', className: 'col-summary', prio: 1, sortField: 'summary',
+    render: (s, ctx) => <EditableSummary sessionId={s.sessionId} summary={s.summary} onSave={ctx.onSummaryEdit} />
+  },
+  {
+    key: 'model', label: 'Model', className: 'col-model', prio: 2, sortField: 'primaryModel',
+    render: (s) => shortModel(s.primaryModel)
+  },
+  {
+    key: 'subs', label: 'Subs', className: 'col-subs', prio: 3, sortField: 'subagentCount',
+    render: (s) => s.subagentCount > 0 ? s.subagentCount : ''
+  },
+  {
+    key: 'tokens', label: 'Tokens', className: 'col-tokens', prio: 2, sortField: 'totalTokens',
+    render: (s) => formatTokens(s.totalTokens)
+  },
+  {
+    key: 'cost', label: 'Cost', className: 'col-cost', prio: 1, sortField: 'totalCost',
+    render: (s) => formatCost(s.totalCost)
+  },
+  {
+    key: 'duration', label: 'Duration', className: 'col-duration', prio: 3, sortField: 'durationMs',
+    render: (s) => formatDuration(s.durationMs)
+  },
+  {
+    key: 'turns', label: 'Turns', className: 'col-turns', prio: 3, sortField: 'turnCount',
+    render: (s) => s.turnCount || 0
+  }
+];
+
 function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onStatusChange, onSummaryEdit, showProject, onSelectProject }) {
   const [restoring, setRestoring] = useState(null);
   const [restoreMsg, setRestoreMsg] = useState(null);
@@ -599,94 +702,38 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
 
   const arrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
+  const columns = COLUMNS.filter(c => c.key !== 'project' || showProject);
+
+  const ctx = {
+    onStatusChange, onSummaryEdit, onSelectProject,
+    restoring, restoreMsg, copied,
+    setRestoreMsg, handleRestore, handleCopyId
+  };
+
   return (
     <div className="session-table-container">
       <table className="session-table">
         <thead>
           <tr>
-            <th className="col-status"></th>
-            <th className="col-date" onClick={() => handleSort('firstTimestamp')}>Created{arrow('firstTimestamp')}</th>
-            <th className="col-date" onClick={() => handleSort('lastTimestamp')}>Last Active{arrow('lastTimestamp')}</th>
-            <th className="col-sessionid"></th>
-            <th className="col-actions"></th>
-            {showProject && <th className="col-project" onClick={() => handleSort('projectName')}>Project{arrow('projectName')}</th>}
-            <th className="col-summary" onClick={() => handleSort('summary')}>Summary{arrow('summary')}</th>
-            <th className="col-model" onClick={() => handleSort('primaryModel')}>Model{arrow('primaryModel')}</th>
-            <th className="col-subs" onClick={() => handleSort('subagentCount')}>Subs{arrow('subagentCount')}</th>
-            <th className="col-tokens" onClick={() => handleSort('totalTokens')}>Tokens{arrow('totalTokens')}</th>
-            <th className="col-cost" onClick={() => handleSort('totalCost')}>Cost{arrow('totalCost')}</th>
-            <th className="col-duration" onClick={() => handleSort('durationMs')}>Duration{arrow('durationMs')}</th>
-            <th className="col-turns" onClick={() => handleSort('turnCount')}>Turns{arrow('turnCount')}</th>
+            {columns.map(c => (
+              <th
+                key={c.key}
+                className={`${c.className} prio-${c.prio}`}
+                onClick={c.sortField ? () => handleSort(c.sortField) : undefined}
+              >
+                {c.label}{c.sortField ? arrow(c.sortField) : ''}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {sorted.map((s, i) => (
             <tr key={`${s.sessionId}-${i}`}>
-              <td className="col-status">
-                {s.sessionId && <StatusDot sessionId={s.sessionId} status={s.status} onChange={onStatusChange} />}
-              </td>
-              <td className="col-date">{formatDate(s.firstTimestamp)}</td>
-              <td className="col-date">{formatDate(s.lastTimestamp)}</td>
-              <td className="col-sessionid">
-                {s.sessionId && (
-                  <button
-                    className={`sessionid-btn ${s.sessionName ? 'named' : ''} ${copied === s.sessionId ? 'copied' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); handleCopyId(s.sessionId); }}
-                    title={s.sessionName ? `${s.sessionName}\n${s.sessionId}` : s.sessionId}
-                  >
-                    {copied === s.sessionId ? 'copied' : (s.sessionName || 'sessionid')}
-                  </button>
-                )}
-              </td>
-              <td className="col-actions">
-                {s.sessionId && (() => {
-                  const msg = restoreMsg && restoreMsg.sessionId === s.sessionId ? restoreMsg : null;
-                  const isRestoring = restoring === s.sessionId;
-
-                  if (msg && msg.type === 'error') {
-                    return <button className="restore-btn restore-error-btn"
-                      title={msg.text}
-                      onClick={(e) => { e.stopPropagation(); setRestoreMsg(null); }}
-                    >Error</button>;
-                  }
-
-                  if (msg && msg.type === 'partial') {
-                    return <button className={`restore-btn restore-copy-btn${msg.copied ? ' copied' : ''}`}
-                      title={`Click to copy: ${msg.text}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(msg.text).then(() => {
-                          setRestoreMsg({ ...msg, copied: true });
-                          setTimeout(() => setRestoreMsg(null), 2000);
-                        });
-                      }}
-                    >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
-                  }
-
-                  return <button
-                    className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); handleRestore(s.sessionId, s.projectPath); }}
-                    title={`Resume session\n${s.sessionId}`}
-                    disabled={isRestoring}
-                  >{isRestoring ? '...' : 'Launch'}</button>;
-                })()}
-              </td>
-              {showProject && (
-                <td className="col-project">
-                  <span className="project-link" onClick={(e) => { e.stopPropagation(); onSelectProject && onSelectProject(s.encodedPath); }}>
-                    {s.projectName || '-'}
-                  </span>
+              {columns.map(c => (
+                <td key={c.key} className={`${c.className} prio-${c.prio}`}>
+                  {c.render(s, ctx)}
                 </td>
-              )}
-              <td className="col-summary">
-                <EditableSummary sessionId={s.sessionId} summary={s.summary} onSave={onSummaryEdit} />
-              </td>
-              <td className="col-model">{shortModel(s.primaryModel)}</td>
-              <td className="col-subs">{s.subagentCount > 0 ? s.subagentCount : ''}</td>
-              <td className="col-tokens">{formatTokens(s.totalTokens)}</td>
-              <td className="col-cost">{formatCost(s.totalCost)}</td>
-              <td className="col-duration">{formatDuration(s.durationMs)}</td>
-              <td className="col-turns">{s.turnCount || 0}</td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -750,9 +797,6 @@ function Rollup({ aggregate }) {
       <div className="rollup-section">
         <div className="rollup-title">Time</div>
         <div><span style={{color: 'var(--text-dim)'}}>Claude Time:</span> <span style={{color: 'var(--blue)'}}>{formatDuration(aggregate.totalDurationMs)}</span></div>
-        {aggregate.totalSubagentDurationMs > 0 && (
-          <div><span style={{color: 'var(--text-dim)'}}>Subagent Time:</span> <span style={{color: 'var(--blue)'}}>{formatDuration(aggregate.totalSubagentDurationMs)}</span></div>
-        )}
         <div><span style={{color: 'var(--text-dim)'}}>Est. Manual:</span> <span style={{color: 'var(--amber)'}}>{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
         <div><span style={{color: 'var(--text-dim)'}}>Time Saved:</span> <span style={{color: 'var(--green)'}}>{formatDuration(aggregate.timeSavedMs)}</span></div>
       </div>
