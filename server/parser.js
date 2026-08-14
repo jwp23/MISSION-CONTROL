@@ -133,7 +133,7 @@ async function parseSessionFile(filePath) {
         metrics.tokensByModel[model].cacheRead += cacheRead;
         metrics.tokensByModel[model].cacheWrite += cacheWrite;
 
-        const msgCost = cost.calculateMessageCost(u, model);
+        const msgCost = cost.calculateMessageCost(u, model, entry.timestamp ? Date.parse(entry.timestamp) : null);
         metrics.totalCost += msgCost;
         metrics.tokensByModel[model].cost += msgCost;
       }

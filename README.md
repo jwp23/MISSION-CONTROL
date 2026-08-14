@@ -8,7 +8,7 @@ Built for anyone using [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 
 - **Discovers projects automatically** by scanning a directory for Claude Code projects (anything with a `.claude/` folder)
 - **Parses session data** from Claude Code's JSONL files to extract token counts, costs, models used, tools called, and auto-generated summaries
-- **Calculates costs** per session using configurable model pricing (Opus, Sonnet, Haiku)
+- **Calculates costs** per session using pricing fetched from LiteLLM at startup and refreshed daily
 - **Estimates time saved** based on a configurable multiplier (e.g., "this would have taken 8x longer without Claude")
 - **Interactive charts** -- daily usage trends, model split over time, monthly spend vs. plan limits
 - **Session management** -- mark sessions as WIP/Complete, edit summaries, search across all sessions
@@ -87,23 +87,17 @@ Session data lives in `.jsonl` files inside those encoded directories. MISSION-C
 Each session file is a sequence of JSON lines containing user messages, assistant responses (with token usage), and system events. The parser extracts:
 
 - **Token counts** -- input, output, cache read, cache write (per model)
-- **Cost** -- calculated from token counts and configured pricing
+- **Cost** -- calculated from token counts and fetched pricing (date-aware; config override optional)
 - **Summary** -- auto-generated from the first few user messages and tool actions
 - **Duration** -- from first to last timestamp
 - **Tool usage** -- counts of Edit, Write, Bash, Grep, etc.
 - **Turn count** -- number of assistant responses
 
-### Cost Calculation
+### Pricing
 
-Pricing is configured per model in `config.json`. The defaults reflect current Claude API pricing:
+MISSION-CONTROL fetches Claude API pricing from LiteLLM's community JSON at startup and refreshes it every 24 hours while running. Prices are stored as dated entries in `pricing-history.json` (gitignored, seeded with a baseline on first run). This ensures historical sessions retain the pricing in effect on their date, rather than being repriced at current rates. The app is offline-safe — if LiteLLM is unreachable, it falls back to the last known historical pricing.
 
-| Model | Input | Output | Cache Read | Cache Write |
-|-------|-------|--------|------------|-------------|
-| Opus 4.6 | $15/M | $75/M | $1.50/M | $18.75/M |
-| Sonnet 4.6 | $3/M | $15/M | $0.30/M | $3.75/M |
-| Haiku 4.5 | $0.80/M | $4/M | $0.08/M | $1/M |
-
-Unknown models fall back to Sonnet pricing.
+The `pricing` key in `config.json` acts as a manual override for any model, useful when you need to test specific rates or apply custom adjustments. If you're upgrading and already have a `pricing` block in your `config.json`, it will override fetched pricing entirely — delete it unless you intend a manual override.
 
 ### Time Saved Estimation
 
