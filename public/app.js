@@ -458,10 +458,10 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
         {beads && beads.hasBeads && (
           <>
             <span className="stat-item" title="Beads closed/created in window">
-              <span className="stat-label">BEADS</span> {beads.closed}/{beads.created}
+              BEADS <span className="stat-value">{beads.closed}/{beads.created}</span>
             </span>
             <span className="stat-item" title="$/Bead = totalCost / beads closed">
-              <span className="stat-label">$/BEAD</span> {beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}
+              $/BEAD <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
             </span>
           </>
         )}
