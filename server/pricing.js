@@ -76,9 +76,9 @@ function getHistory() {
 }
 
 async function refresh(fetchFn = global.fetch) {
-  if (!moduleHistory) throw new Error('pricing.init() not called');
-
   try {
+    if (!moduleHistory) throw new Error('pricing.init() not called');
+
     const res = await fetchFn(LITELLM_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
@@ -100,6 +100,11 @@ function startAutoRefresh(intervalMs = 24 * 60 * 60 * 1000) {
   timer.unref();
 }
 
+function _resetForTesting() {
+  moduleHistory = null;
+  moduleHistoryPath = null;
+}
+
 module.exports = {
   LITELLM_URL,
   normalizeLitellm,
@@ -108,5 +113,6 @@ module.exports = {
   init,
   getHistory,
   refresh,
-  startAutoRefresh
+  startAutoRefresh,
+  _resetForTesting
 };
