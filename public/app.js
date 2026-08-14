@@ -435,7 +435,7 @@ function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
 
 // --- Components ---
 
-function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange }) {
+function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads }) {
   return (
     <div className="top-bar">
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
@@ -455,6 +455,16 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
         <span className="stat-item">
           MULTIPLIER <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
+        {beads && beads.hasBeads && (
+          <>
+            <span className="stat-item" title="Beads closed/created in window">
+              <span className="stat-label">BEADS</span> {beads.closed}/{beads.created}
+            </span>
+            <span className="stat-item" title="$/Bead = totalCost / beads closed">
+              <span className="stat-label">$/BEAD</span> {beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}
+            </span>
+          </>
+        )}
       </div>
       <div className="top-bar-controls">
         {(timeRange.from || timeRange.to) && (
@@ -880,6 +890,7 @@ function App() {
   const [wipFilter, setWipFilter] = useState(false);
   const [wipSessions, setWipSessions] = useState({});
   const [timeRange, setTimeRange] = useState({ from: null, to: null });
+  const [beadsStats, setBeadsStats] = useState(null);
 
   // Returns '' or a from/to query string fragment, prefixed with sep ('?' or '&')
   const rangeQS = (sep) => timeRange.from || timeRange.to
@@ -947,6 +958,7 @@ function App() {
     const projectParam = selectedProject !== '__all__' ? `?project=${selectedProject}` : '';
     fetch(`/api/daily-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setDailyStats).catch(console.error);
     fetch(`/api/monthly-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setMonthlyStats).catch(console.error);
+    fetch(`/api/beads${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(setBeadsStats).catch(() => setBeadsStats(null));
   }, [selectedProject, timeRange]);
 
   // Search
@@ -1041,7 +1053,7 @@ function App() {
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
-        timeRange={timeRange} onClearRange={() => setTimeRange({ from: null, to: null })} />
+        timeRange={timeRange} onClearRange={() => setTimeRange({ from: null, to: null })} beads={beadsStats} />
       <div className="main-layout">
         <Sidebar
           projects={projects}
