@@ -1,4 +1,4 @@
-const { execFile, execFileSync, spawn } = require('child_process');
+const { execFile, execFileSync, spawn } = require('node:child_process');
 
 const TERMINALS = {
   ghostty:       { bin: 'ghostty',     execFlag: '-e', full: true },
@@ -9,7 +9,7 @@ const TERMINALS = {
 };
 
 function shellQuote(s) {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
+  return "'" + s.replaceAll("'", String.raw`'\''`) + "'";
 }
 
 function findBinary(bin) {
@@ -38,7 +38,7 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
     // keystroke "types" this text directly into the destination shell, so it must
     // be shell-quoted (not just AppleScript-escaped) to neutralize shell metacharacters.
     const typedCmd = buildResumeCmd(cwd, sessionId);
-    const safeTypedCmd = typedCmd.replace(/["\\]/g, '\\$&');
+    const safeTypedCmd = typedCmd.replace(/["\\]/g, String.raw`\$&`);
     const script = `
       tell application "Ghostty"
         activate
