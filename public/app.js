@@ -57,7 +57,7 @@ function LineChart({ data, title }) {
 
   if (!data || data.length === 0) return null;
 
-  const W = 500, H = 100, padL = 50, padR = 10, padT = 5, padB = 20;
+  const W = 500, H = 100, padL = 56, padR = 10, padT = 5, padB = 20;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
@@ -184,7 +184,7 @@ function ModelChart({ data, title }) {
     return { ...d, pcts, total };
   });
 
-  const W = 500, H = 100, padL = 30, padR = 10, padT = 5, padB = 20;
+  const W = 500, H = 100, padL = 36, padR = 10, padT = 5, padB = 20;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
@@ -286,7 +286,7 @@ function MonthlySpendChart({ data, title }) {
 
   if (!data || data.length === 0) return null;
 
-  const W = 500, H = 100, padL = 40, padR = 10, padT = 10, padB = 20;
+  const W = 500, H = 100, padL = 46, padR = 10, padT = 10, padB = 20;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
@@ -333,7 +333,7 @@ function MonthlySpendChart({ data, title }) {
         {/* $100 reference line */}
         <line x1={padL} y1={yScale(100)} x2={W - padR} y2={yScale(100)}
           stroke="var(--green)" strokeWidth="1" strokeDasharray="4,3" />
-        <text x={W - padR + 2} y={yScale(100) + 3} className="chart-axis-label" fill="var(--green)" textAnchor="start" style={{fontSize: '5px'}}>
+        <text x={W - padR + 2} y={yScale(100) + 3} className="chart-axis-label" fill="var(--green)" textAnchor="start" style={{fontSize: '7px'}}>
           $100
         </text>
         {/* Bars */}
@@ -356,7 +356,7 @@ function MonthlySpendChart({ data, title }) {
               />
               {/* Value label above bar */}
               <text x={xAt(i)} y={yScale(d.cost) - 2} textAnchor="middle"
-                className="chart-axis-label" fill="var(--amber)" style={{fontSize: '5.5px', fontWeight: 600}}>
+                className="chart-axis-label" fill="var(--amber)" style={{fontSize: '7.5px', fontWeight: 600}}>
                 {formatCost(d.cost)}
               </text>
             </g>
