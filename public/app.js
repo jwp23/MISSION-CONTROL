@@ -38,9 +38,9 @@ function formatDate(ts) {
 
 function shortModel(model) {
   if (!model) return '-';
-  const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable', 'mythos'];
+  const FAMILIES = new Set(['opus', 'sonnet', 'haiku', 'fable', 'mythos']);
   const parts = model.split('-').filter(p => p !== 'claude' && !/^\d{8}$/.test(p)); // drop 'claude' and date suffixes like 20251001
-  const family = parts.find(p => FAMILIES.includes(p));
+  const family = parts.find(p => FAMILIES.has(p));
   const nums = parts.filter(p => /^\d+$/.test(p));
   if (!family) return model;
   const name = family[0].toUpperCase() + family.slice(1);
@@ -50,10 +50,33 @@ function shortModel(model) {
 function shortDate(dateStr) {
   // 'YYYY-MM-DD' -> 'M/D'
   const [, m, d] = dateStr.split('-');
-  return `${parseInt(m)}/${parseInt(d)}`;
+  return `${Number.parseInt(m)}/${Number.parseInt(d)}`;
+}
+
+// Accessibility props for clickable non-form elements: keyboard activation +
+// button role so they work for screen readers and tabbing.
+function clickableProps(onActivate) {
+  return {
+    role: 'button',
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onActivate(e);
+      }
+    },
+  };
 }
 
 // --- Chart Components ---
+
+// Show every label for short ranges, thin them out as the range grows.
+function labelIntervalFor(count) {
+  if (count > 30) return 7;
+  if (count > 15) return 3;
+  return 1;
+}
 
 // mode 'point' maps x to the nearest of `count` evenly-spaced points (plotW / (count-1)
 // spacing) — matches charts that plot vertices, e.g. LineChart/ModelChart.
@@ -120,7 +143,7 @@ function LineChart({ data, title, onSelectRange }) {
   const yTicks = 3;
   const tokenStep = maxTokens / yTicks;
 
-  const labelInterval = data.length > 30 ? 7 : data.length > 15 ? 3 : 1;
+  const labelInterval = labelIntervalFor(data.length);
 
   return (
     <div className="chart-wrapper">
@@ -155,7 +178,7 @@ function LineChart({ data, title, onSelectRange }) {
         <path d={tokenArea} fill="#ff6b35" opacity="0.1" />
         <polyline points={tokenLine} fill="none" stroke="#ff6b35" strokeWidth="1.5" />
         {data.map((d, i) => (
-          <circle key={`t${i}`} cx={xAt(i)} cy={yTokens(d.tokens)} r="2.5" fill="#ff6b35"
+          <circle key={d.date} cx={xAt(i)} cy={yTokens(d.tokens)} r="2.5" fill="#ff6b35"
             onMouseEnter={(e) => setTooltip({
               x: e.clientX, y: e.clientY,
               text: `${shortDate(d.date)}: ${formatTokens(d.tokens)} tokens, ${formatCost(d.cost)} (${d.sessions} sessions)`
@@ -166,7 +189,7 @@ function LineChart({ data, title, onSelectRange }) {
         <path d={costArea} fill="#4da6ff" opacity="0.08" />
         <polyline points={costLine} fill="none" stroke="#4da6ff" strokeWidth="1.5" strokeDasharray="3,2" />
         {data.map((d, i) => (
-          <circle key={`c${i}`} cx={xAt(i)} cy={yCost(d.cost)} r="2" fill="#4da6ff"
+          <circle key={d.date} cx={xAt(i)} cy={yCost(d.cost)} r="2" fill="#4da6ff"
             onMouseEnter={(e) => setTooltip({
               x: e.clientX, y: e.clientY,
               text: `${shortDate(d.date)}: ${formatCost(d.cost)} cost, ${formatTokens(d.tokens)} tokens`
@@ -194,7 +217,7 @@ function LineChart({ data, title, onSelectRange }) {
 
 // Model display names (from shortModel) that don't match a known family fall
 // back to the raw model id and are grouped into "Other" rather than dropped.
-const MODEL_FAMILY_ORDER = ['fable', 'mythos', 'opus', 'sonnet', 'haiku'];
+const MODEL_FAMILY_ORDER = new Set(['fable', 'mythos', 'opus', 'sonnet', 'haiku']);
 
 const MODEL_EXACT_COLORS = {
   'Fable 5': '#b57bff',
@@ -219,12 +242,12 @@ const MODEL_OTHER_COLOR = '#7a8a9e';
 
 function modelFamily(displayName) {
   const first = displayName.split(' ')[0].toLowerCase();
-  return MODEL_FAMILY_ORDER.includes(first) ? first : null;
+  return MODEL_FAMILY_ORDER.has(first) ? first : null;
 }
 
 function modelVersion(displayName) {
   const m = displayName.match(/[\d.]+/);
-  return m ? parseFloat(m[0]) : 0;
+  return m ? Number.parseFloat(m[0]) : 0;
 }
 
 // Deterministic stack order: family order (Fable, Mythos, Opus, Sonnet, Haiku),
@@ -234,14 +257,18 @@ function buildModelOrder(names) {
   const other = [];
   for (const n of names) {
     const fam = modelFamily(n);
-    if (fam) (byFamily[fam] = byFamily[fam] || []).push(n);
-    else other.push(n);
+    if (!fam) {
+      other.push(n);
+      continue;
+    }
+    if (!byFamily[fam]) byFamily[fam] = [];
+    byFamily[fam].push(n);
   }
   const order = [];
   for (const fam of MODEL_FAMILY_ORDER) {
     if (byFamily[fam]) order.push(...byFamily[fam].slice().sort((a, b) => modelVersion(b) - modelVersion(a)));
   }
-  order.push(...other.sort());
+  order.push(...other.toSorted((a, b) => a.localeCompare(b)));
   return order;
 }
 
@@ -257,7 +284,8 @@ function buildModelColors(names) {
   for (const n of remaining) {
     const fam = modelFamily(n);
     if (!fam) { colors[n] = MODEL_OTHER_COLOR; continue; }
-    (byFamily[fam] = byFamily[fam] || []).push(n);
+    if (!byFamily[fam]) byFamily[fam] = [];
+    byFamily[fam].push(n);
   }
   for (const [fam, list] of Object.entries(byFamily)) {
     const sorted = list.slice().sort((a, b) => modelVersion(b) - modelVersion(a));
@@ -330,7 +358,7 @@ function ModelChart({ data, title, onSelectRange }) {
     lines[model] = points.map(p => `${p.x},${p.yTop}`).join(' ');
   }
 
-  const labelInterval = data.length > 30 ? 7 : data.length > 15 ? 3 : 1;
+  const labelInterval = labelIntervalFor(data.length);
 
   return (
     <div className="chart-wrapper">
@@ -367,7 +395,7 @@ function ModelChart({ data, title, onSelectRange }) {
         ))}
         {/* Hover targets */}
         {processed.map((d, i) => (
-          <rect key={i} x={xAt(i) - (plotW / processed.length / 2)} y={padT} width={plotW / processed.length} height={plotH}
+          <rect key={d.date} x={xAt(i) - (plotW / processed.length / 2)} y={padT} width={plotW / processed.length} height={plotH}
             fill="transparent" cursor="pointer"
             onMouseEnter={(e) => {
               const parts = modelOrder
@@ -423,7 +451,11 @@ function MonthlySpendChart({ data, title, onSelectRange }) {
   const niceStep = (raw) => {
     const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
     const norm = raw / magnitude;
-    const niceNorm = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    let niceNorm;
+    if (norm <= 1) niceNorm = 1;
+    else if (norm <= 2) niceNorm = 2;
+    else if (norm <= 5) niceNorm = 5;
+    else niceNorm = 10;
     return niceNorm * magnitude;
   };
   const yStep = niceStep(maxCost / 4);
@@ -434,7 +466,7 @@ function MonthlySpendChart({ data, title, onSelectRange }) {
   const monthLabel = (m) => {
     const [y, mo] = m.split('-');
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return data.length > 12 ? `${months[parseInt(mo) - 1]} '${y.slice(2)}` : months[parseInt(mo) - 1];
+    return data.length > 12 ? `${months[Number.parseInt(mo) - 1]} '${y.slice(2)}` : months[Number.parseInt(mo) - 1];
   };
 
   return (
@@ -514,9 +546,9 @@ function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
 
   return (
     <>
-      <div className="charts-toggle" onClick={() => setCollapsed(!collapsed)}>
+      <div className="charts-toggle" {...clickableProps(() => setCollapsed(!collapsed))}>
         <span className={`charts-toggle-arrow ${collapsed ? 'collapsed' : ''}`}>▼</span>
-        DAILY ACTIVITY
+        <span>DAILY ACTIVITY</span>
       </div>
       {!collapsed && (
         <div className="charts-panel">
@@ -558,7 +590,7 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           <span className="stat-label">Multiplier</span>
           <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
-        {beads && beads.hasBeads && (
+        {beads?.hasBeads && (
           <span className="stat-item money" title="$/Bead = spend ÷ beads closed for the current scope and window">
             <span className="stat-label">$/Bead</span>
             <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
@@ -567,11 +599,12 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
       </div>
       <div className="top-bar-controls">
         {(timeRange.from || timeRange.to) && (
-          <button className="timerange-chip" onClick={onClearRange}>
+          <button type="button" className="timerange-chip" onClick={onClearRange}>
             {timeRange.from} → {timeRange.to} ✕
           </button>
         )}
         <button
+          type="button"
           className={`wip-filter-btn ${wipFilter ? 'active' : ''}`}
           onClick={onToggleWip}
         >
@@ -599,7 +632,7 @@ function Sidebar({ projects, selectedProject, onSelect, activeSessions, wipCount
       <div className="sidebar-header">Projects</div>
       <div
         className={`project-item all-projects ${selectedProject === '__all__' ? 'active' : ''}`}
-        onClick={() => onSelect('__all__')}
+        {...clickableProps(() => onSelect('__all__'))}
       >
         <span className="project-dot" style={{background: 'var(--green)'}}></span>
         <span className="project-name" style={{fontWeight: 600}}>All Projects</span>
@@ -607,16 +640,16 @@ function Sidebar({ projects, selectedProject, onSelect, activeSessions, wipCount
       </div>
       <div className="sidebar-divider"></div>
       {projects.map(p => {
-        const isActive = activeProjects.has(p.path);
-        const hasSessions = p.sessionCount > 0;
-        const dotClass = isActive ? 'active' : hasSessions ? 'has-sessions' : '';
+        let dotClass = '';
+        if (activeProjects.has(p.path)) dotClass = 'active';
+        else if (p.sessionCount > 0) dotClass = 'has-sessions';
         const wip = wipCounts[p.encodedPath] || 0;
 
         return (
           <div
             key={p.encodedPath}
             className={`project-item ${selectedProject === p.encodedPath ? 'active' : ''}`}
-            onClick={() => onSelect(p.encodedPath)}
+            {...clickableProps(() => onSelect(p.encodedPath))}
           >
             <span className={`project-dot ${dotClass}`}></span>
             <span className="project-name">{p.name}</span>
@@ -634,7 +667,10 @@ function StatusDot({ sessionId, status, onChange }) {
   const handleClick = (e) => {
     e.stopPropagation();
     // Cycle: null -> wip -> complete -> null
-    const next = !status ? 'wip' : status === 'wip' ? 'complete' : null;
+    let next;
+    if (!status) next = 'wip';
+    else if (status === 'wip') next = 'complete';
+    else next = null;
     fetch(`/api/sessions/${sessionId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -645,12 +681,15 @@ function StatusDot({ sessionId, status, onChange }) {
       .catch(console.error);
   };
 
-  const cls = status === 'wip' ? 'status-dot wip' : status === 'complete' ? 'status-dot complete' : 'status-dot';
-  const title = status === 'wip' ? 'WIP — click to mark complete' : status === 'complete' ? 'Complete — click to clear' : 'Click to mark WIP';
+  const APPEARANCE = {
+    wip: { cls: 'status-dot wip', title: 'WIP — click to mark complete' },
+    complete: { cls: 'status-dot complete', title: 'Complete — click to clear' },
+  };
+  const { cls, title } = APPEARANCE[status] || { cls: 'status-dot', title: 'Click to mark WIP' };
   const label = status === 'complete' ? '\u2713' : '';
 
   return (
-    <span className={cls} onClick={handleClick} title={title}>{label}</span>
+    <span className={cls} {...clickableProps(handleClick)} title={title}>{label}</span>
   );
 }
 
@@ -673,7 +712,13 @@ function EditableSummary({ sessionId, summary, onSave }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleSave}
-        onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setValue(summary || ''); setEditing(false); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleSave();
+          if (e.key === 'Escape') {
+            setValue(summary || '');
+            setEditing(false);
+          }
+        }}
         autoFocus
       />
     );
@@ -712,6 +757,7 @@ const COLUMNS = [
     render: (s, ctx) => (
       s.sessionId && (
         <button
+          type="button"
           className={`sessionid-btn ${s.sessionName ? 'named' : ''} ${ctx.copied === s.sessionId ? 'copied' : ''}`}
           onClick={(e) => { e.stopPropagation(); ctx.handleCopyId(s.sessionId); }}
           title={s.sessionName ? `${s.sessionName}\n${s.sessionId}` : s.sessionId}
@@ -725,18 +771,18 @@ const COLUMNS = [
     key: 'actions', label: '', className: 'col-actions', prio: 1, sortField: null,
     render: (s, ctx) => (
       s.sessionId && (() => {
-        const msg = ctx.restoreMsg && ctx.restoreMsg.sessionId === s.sessionId ? ctx.restoreMsg : null;
+        const msg = ctx.restoreMsg?.sessionId === s.sessionId ? ctx.restoreMsg : null;
         const isRestoring = ctx.restoring === s.sessionId;
 
-        if (msg && msg.type === 'error') {
-          return <button className="restore-btn restore-error-btn"
+        if (msg?.type === 'error') {
+          return <button type="button" className="restore-btn restore-error-btn"
             title={msg.text}
             onClick={(e) => { e.stopPropagation(); ctx.setRestoreMsg(null); }}
           >Error</button>;
         }
 
-        if (msg && msg.type === 'partial') {
-          return <button className={`restore-btn restore-copy-btn${msg.copied ? ' copied' : ''}`}
+        if (msg?.type === 'partial') {
+          return <button type="button" className={`restore-btn restore-copy-btn${msg.copied ? ' copied' : ''}`}
             title={`Click to copy: ${msg.text}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -749,6 +795,7 @@ const COLUMNS = [
         }
 
         return <button
+          type="button"
           className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
           onClick={(e) => { e.stopPropagation(); ctx.handleRestore(s.sessionId, s.projectPath); }}
           title={`Resume session\n${s.sessionId}`}
@@ -760,7 +807,7 @@ const COLUMNS = [
   {
     key: 'project', label: 'Project', className: 'col-project', prio: 1, sortField: 'projectName',
     render: (s, ctx) => (
-      <span className="project-link" onClick={(e) => { e.stopPropagation(); ctx.onSelectProject && ctx.onSelectProject(s.encodedPath); }}>
+      <span className="project-link" {...clickableProps((e) => { e.stopPropagation(); ctx.onSelectProject?.(s.encodedPath); })}>
         {s.projectName || '-'}
       </span>
     )
@@ -849,7 +896,10 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
     });
   };
 
-  const arrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const arrow = (field) => {
+    if (sortField !== field) return '';
+    return sortDir === 'asc' ? ' ▲' : ' ▼';
+  };
 
   const columns = COLUMNS.filter(c => c.key !== 'project' || showProject);
 
@@ -914,23 +964,25 @@ function Rollup({ aggregate, beads }) {
   const totalTokens = models.reduce((sum, [, m]) => sum + m.input + m.output + m.cacheRead + m.cacheWrite, 0);
   const totalSubTokens = subModels.reduce((sum, [, m]) => sum + m.input + m.output + m.cacheRead + m.cacheWrite, 0);
   const totalSubCost = subModels.reduce((sum, [, m]) => sum + m.cost, 0);
-  const hasBeads = beads && beads.hasBeads;
+  const hasBeads = beads?.hasBeads;
 
   const digestParts = [
     `${formatTokens(totalTokens)} tok`,
     `${aggregate.totalSubagentCount || 0} subs`,
   ];
   if (hasBeads) {
-    digestParts.push(`beads ${beads.closed}/${beads.created}`);
-    digestParts.push(`$/bead ${typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}`);
+    digestParts.push(
+      `beads ${beads.closed}/${beads.created}`,
+      `$/bead ${typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}`
+    );
   }
   digestParts.push(formatDuration(aggregate.totalDurationMs));
 
   return (
     <>
-      <div className="rollup-toggle" onClick={toggle}>
+      <div className="rollup-toggle" {...clickableProps(toggle)}>
         <span className={`rollup-toggle-arrow ${collapsed ? 'collapsed' : ''}`}>▼</span>
-        ROLLUP
+        <span>ROLLUP</span>
         {collapsed && <span className="rollup-digest">{digestParts.join(' · ')}</span>}
       </div>
       {!collapsed && (
@@ -973,7 +1025,7 @@ function Rollup({ aggregate, beads }) {
             </div>
           </div>
         )}
-        {beads && beads.hasBeads && (
+        {hasBeads && (
           <div className="rollup-section">
             <div className="rollup-title">Beads</div>
             <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
@@ -1022,6 +1074,37 @@ function BottomBar({ activeSessions }) {
 
 // --- Main App ---
 
+// '' when no window is set, else a from/to query fragment prefixed with sep ('?' or '&')
+function rangeQuery(timeRange, sep) {
+  const parts = [];
+  if (timeRange.from) parts.push(`from=${encodeURIComponent(timeRange.from)}`);
+  if (timeRange.to) parts.push(`to=${encodeURIComponent(timeRange.to)}`);
+  return parts.length ? sep + parts.join('&') : '';
+}
+
+function SessionsPane({ loading, sessions, tableProps }) {
+  if (loading) {
+    return <div className="loading"><span className="loading-pulse">Loading sessions...</span></div>;
+  }
+  if (sessions.length === 0) {
+    return <div className="empty-state">No sessions found</div>;
+  }
+  return <SessionTable sessions={sessions} {...tableProps} />;
+}
+
+function ContentHeader({ title, sessionCount, totalCost, totalDurationMs }) {
+  return (
+    <div className="content-header">
+      <span className="content-title">{title}</span>
+      <div className="content-stats">
+        <span>Sessions: <strong>{sessionCount || 0}</strong></span>
+        <span>Cost: <strong style={{color: 'var(--amber)'}}>{formatCost(totalCost)}</strong></span>
+        <span>Time: <strong style={{color: 'var(--blue)'}}>{formatDuration(totalDurationMs)}</strong></span>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -1043,10 +1126,7 @@ function App() {
   const [globalBeads, setGlobalBeads] = useState(null);
   const [projectStats, setProjectStats] = useState(null);
 
-  // Returns '' or a from/to query string fragment, prefixed with sep ('?' or '&')
-  const rangeQS = (sep) => timeRange.from || timeRange.to
-    ? `${sep}${timeRange.from ? `from=${timeRange.from}` : ''}${timeRange.from && timeRange.to ? '&' : ''}${timeRange.to ? `to=${timeRange.to}` : ''}`
-    : '';
+  const rangeQS = (sep) => rangeQuery(timeRange, sep);
 
   // Load projects on mount
   useEffect(() => {
@@ -1078,7 +1158,7 @@ function App() {
   useEffect(() => {
     const h = (e) => {
       if (e.key !== 'Escape') return;
-      const tag = e.target && e.target.tagName;
+      const tag = e.target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r);
     };
@@ -1092,44 +1172,46 @@ function App() {
     let cancelled = false;
     setLoadingSessions(true);
 
-    fetch(`/api/stats${rangeQS('?')}`).then(r => r.json()).then(data => { if (!cancelled) setStats(data); }).catch(console.error);
+    const load = (url, setter, onError) =>
+      fetch(url)
+        .then(r => r.json())
+        .then(data => { if (!cancelled) setter(data); })
+        .catch(onError || console.error);
+
+    const proj = encodeURIComponent(selectedProject);
+
+    load(`/api/stats${rangeQS('?')}`, setStats);
 
     // Fetch project-scoped, windowed stats for the project view's Rollup + header
     // (currentProject.aggregate is computed once at scan time and ignores the time window)
-    if (selectedProject === '__all__') {
-      setProjectStats(null);
-    } else {
-      setProjectStats(null);
-      fetch(`/api/stats?project=${selectedProject}${rangeQS('&')}`)
-        .then(r => r.json())
-        .then(data => { if (!cancelled) setProjectStats(data); })
-        .catch(console.error);
+    setProjectStats(null);
+    if (selectedProject !== '__all__') {
+      load(`/api/stats?project=${proj}${rangeQS('&')}`, setProjectStats);
     }
 
     // Fetch sessions
     const sessionsUrl = selectedProject === '__all__'
       ? '/api/sessions/all'
-      : `/api/projects/${selectedProject}/sessions`;
-    fetch(`${sessionsUrl}${rangeQS('?')}`)
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
+      : `/api/projects/${proj}/sessions`;
+    load(`${sessionsUrl}${rangeQS('?')}`,
+      data => {
         setSessions(data);
         setLoadingSessions(false);
-      })
-      .catch(err => {
+      },
+      err => {
         if (cancelled) return;
         console.error('Failed to load sessions:', err);
         setLoadingSessions(false);
       });
 
     // Fetch chart data filtered by project
-    const projectParam = selectedProject !== '__all__' ? `?project=${selectedProject}` : '';
-    fetch(`/api/daily-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setDailyStats(data); }).catch(console.error);
-    fetch(`/api/monthly-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setMonthlyStats(data); }).catch(console.error);
-    fetch(`/api/beads${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setBeadsStats(data); }).catch(() => { if (!cancelled) setBeadsStats(null); });
+    const projectParam = selectedProject !== '__all__' ? `?project=${proj}` : '';
+    const chartQS = `${projectParam}${rangeQS(projectParam ? '&' : '?')}`;
+    load(`/api/daily-stats${chartQS}`, setDailyStats);
+    load(`/api/monthly-stats${chartQS}`, setMonthlyStats);
+    load(`/api/beads${chartQS}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
     // Fetch global beads (for TopBar headline $/BEAD) — always global, respecting only time window
-    fetch(`/api/beads${rangeQS('?')}`).then(r => r.json()).then(data => { if (!cancelled) setGlobalBeads(data); }).catch(() => { if (!cancelled) setGlobalBeads(null); });
+    load(`/api/beads${rangeQS('?')}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
 
     return () => { cancelled = true; };
   }, [selectedProject, timeRange.from, timeRange.to]);
@@ -1222,6 +1304,41 @@ function App() {
     );
   }
 
+  const tableProps = {
+    sortField, sortDir, onSort: handleSort,
+    onStatusChange: handleStatusChange, onSummaryEdit: handleSummaryEdit,
+  };
+
+  let content;
+  if (selectedProject === '__all__') {
+    content = (
+      <>
+        <ContentHeader title="All Projects" sessionCount={stats.sessionCount}
+          totalCost={stats.totalCost} totalDurationMs={stats.totalDurationMs} />
+        <SessionsPane loading={loadingSessions} sessions={displaySessions}
+          tableProps={{ ...tableProps, projectPath: null, showProject: true, onSelectProject: setSelectedProject }} />
+        <Rollup aggregate={stats} beads={beadsStats} />
+      </>
+    );
+  } else if (currentProject) {
+    // projectStats is the windowed /api/stats?project=... aggregate; fall back to
+    // the static (un-windowed) currentProject.aggregate only while it's loading,
+    // to avoid a blank flash.
+    const agg = projectStats || currentProject.aggregate;
+    content = (
+      <>
+        <ContentHeader title={currentProject.name}
+          sessionCount={projectStats ? projectStats.sessionCount : currentProject.sessionCount}
+          totalCost={agg?.totalCost} totalDurationMs={agg?.totalDurationMs} />
+        <SessionsPane loading={loadingSessions} sessions={displaySessions}
+          tableProps={{ ...tableProps, projectPath: currentProject.path }} />
+        <Rollup aggregate={agg} beads={beadsStats} />
+      </>
+    );
+  } else {
+    content = <div className="empty-state">Select a project</div>;
+  }
+
   return (
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
@@ -1238,68 +1355,7 @@ function App() {
         <div className="content">
           <ChartsPanel dailyStats={dailyStats} monthlyStats={monthlyStats}
             onSelectRange={(from, to) => setTimeRange({ from, to })} />
-          {selectedProject === '__all__' ? (
-            <>
-              <div className="content-header">
-                <span className="content-title">All Projects</span>
-                <div className="content-stats">
-                  <span>Sessions: <strong>{stats.sessionCount || 0}</strong></span>
-                  <span>Cost: <strong style={{color: 'var(--amber)'}}>{formatCost(stats.totalCost)}</strong></span>
-                  <span>Time: <strong style={{color: 'var(--blue)'}}>{formatDuration(stats.totalDurationMs)}</strong></span>
-                </div>
-              </div>
-              {loadingSessions ? (
-                <div className="loading"><span className="loading-pulse">Loading sessions...</span></div>
-              ) : displaySessions.length > 0 ? (
-                <SessionTable
-                  sessions={displaySessions}
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  projectPath={null}
-                  onStatusChange={handleStatusChange}
-                  onSummaryEdit={handleSummaryEdit}
-                  showProject={true}
-                  onSelectProject={setSelectedProject}
-                />
-              ) : (
-                <div className="empty-state">No sessions found</div>
-              )}
-              <Rollup aggregate={stats} beads={beadsStats} />
-            </>
-          ) : currentProject ? (
-            <>
-              {/* projectStats is the windowed /api/stats?project=... aggregate; fall back to
-                  the static (un-windowed) currentProject.aggregate only while it's loading,
-                  to avoid a blank flash. */}
-              <div className="content-header">
-                <span className="content-title">{currentProject.name}</span>
-                <div className="content-stats">
-                  <span>Sessions: <strong>{projectStats ? projectStats.sessionCount : currentProject.sessionCount}</strong></span>
-                  <span>Cost: <strong style={{color: 'var(--amber)'}}>{formatCost(projectStats ? projectStats.totalCost : currentProject.aggregate?.totalCost)}</strong></span>
-                  <span>Time: <strong style={{color: 'var(--blue)'}}>{formatDuration(projectStats ? projectStats.totalDurationMs : currentProject.aggregate?.totalDurationMs)}</strong></span>
-                </div>
-              </div>
-              {loadingSessions ? (
-                <div className="loading"><span className="loading-pulse">Loading sessions...</span></div>
-              ) : displaySessions.length > 0 ? (
-                <SessionTable
-                  sessions={displaySessions}
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  projectPath={currentProject.path}
-                  onStatusChange={handleStatusChange}
-                  onSummaryEdit={handleSummaryEdit}
-                />
-              ) : (
-                <div className="empty-state">No sessions found</div>
-              )}
-              <Rollup aggregate={projectStats || currentProject.aggregate} beads={beadsStats} />
-            </>
-          ) : (
-            <div className="empty-state">Select a project</div>
-          )}
+          {content}
         </div>
       </div>
       <BottomBar activeSessions={activeSessions} />
