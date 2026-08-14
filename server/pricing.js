@@ -10,7 +10,7 @@ let moduleHistoryPath = null;
 function normalizeLitellm(json) {
   const out = {};
   for (const [key, v] of Object.entries(json || {})) {
-    if (!v || v.litellm_provider !== 'anthropic' || !key.startsWith('claude')) continue;
+    if (v?.litellm_provider !== 'anthropic' || !key.startsWith('claude')) continue;
     if (typeof v.input_cost_per_token !== 'number' || typeof v.output_cost_per_token !== 'number') continue;
     out[key] = {
       input: v.input_cost_per_token * 1e6,
@@ -26,7 +26,7 @@ function normalizeLitellm(json) {
 function sortedStringify(v) {
   if (v === null || typeof v !== 'object') return JSON.stringify(v);
   if (Array.isArray(v)) return '[' + v.map(sortedStringify).join(',') + ']';
-  return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + sortedStringify(v[k])).join(',') + '}';
+  return '{' + Object.keys(v).sort((a, b) => a.localeCompare(b)).map((k) => JSON.stringify(k) + ':' + sortedStringify(v[k])).join(',') + '}';
 }
 
 function appendIfChanged(history, snapshot, dateStr) {
@@ -46,22 +46,28 @@ function matchConfigPricing(table, model) {
   return null;
 }
 
+function entryEffectiveAt(entries, timestampMs) {
+  if (!Number.isFinite(timestampMs)) return entries[entries.length - 1];
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (Date.parse(entries[i].effectiveFrom) <= timestampMs) return entries[i];
+  }
+  return entries[0];
+}
+
+function longestPrefixPricing(prices, model) {
+  let best = null;
+  for (const key of Object.keys(prices)) {
+    if (model.startsWith(key) && (!best || key.length > best.length)) best = key;
+  }
+  return best ? prices[best] : null;
+}
+
 function resolvePricing(history, model, timestampMs) {
   const entries = history.entries;
   if (!entries.length) return null;
-  let entry = entries[entries.length - 1];
-  if (Number.isFinite(timestampMs)) {
-    for (let i = entries.length - 1; i >= 0; i--) {
-      if (Date.parse(entries[i].effectiveFrom) <= timestampMs) { entry = entries[i]; break; }
-      if (i === 0) entry = entries[0];
-    }
-  }
+  const entry = entryEffectiveAt(entries, timestampMs);
   if (entry.prices[model]) return entry.prices[model];
-  let best = null;
-  for (const key of Object.keys(entry.prices)) {
-    if (model.startsWith(key) && (!best || key.length > best.length)) best = key;
-  }
-  return best ? entry.prices[best] : null;
+  return longestPrefixPricing(entry.prices, model);
 }
 
 function ensureHistory() {
@@ -161,7 +167,7 @@ function getPricing(model, timestampMs) {
   if (resolved) return resolved;
   console.warn(`pricing: no rate for model "${model}", falling back to sonnet/$0`);
   const latest = history.entries[history.entries.length - 1];
-  return (latest && latest.prices['claude-sonnet-5']) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  return latest?.prices['claude-sonnet-5'] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
 
 module.exports = {
