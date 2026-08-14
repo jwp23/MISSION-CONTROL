@@ -1006,6 +1006,7 @@ function App() {
   const [wipSessions, setWipSessions] = useState({});
   const [timeRange, setTimeRange] = useState({ from: null, to: null });
   const [beadsStats, setBeadsStats] = useState(null);
+  const [projectStats, setProjectStats] = useState(null);
 
   // Returns '' or a from/to query string fragment, prefixed with sep ('?' or '&')
   const rangeQS = (sep) => timeRange.from || timeRange.to
@@ -1057,6 +1058,18 @@ function App() {
     setLoadingSessions(true);
 
     fetch(`/api/stats${rangeQS('?')}`).then(r => r.json()).then(data => { if (!cancelled) setStats(data); }).catch(console.error);
+
+    // Fetch project-scoped, windowed stats for the project view's Rollup + header
+    // (currentProject.aggregate is computed once at scan time and ignores the time window)
+    if (selectedProject === '__all__') {
+      setProjectStats(null);
+    } else {
+      setProjectStats(null);
+      fetch(`/api/stats?project=${selectedProject}${rangeQS('&')}`)
+        .then(r => r.json())
+        .then(data => { if (!cancelled) setProjectStats(data); })
+        .catch(console.error);
+    }
 
     // Fetch sessions
     const sessionsUrl = selectedProject === '__all__'
@@ -1219,12 +1232,15 @@ function App() {
             </>
           ) : currentProject ? (
             <>
+              {/* projectStats is the windowed /api/stats?project=... aggregate; fall back to
+                  the static (un-windowed) currentProject.aggregate only while it's loading,
+                  to avoid a blank flash. */}
               <div className="content-header">
                 <span className="content-title">{currentProject.name}</span>
                 <div className="content-stats">
-                  <span>Sessions: <strong>{currentProject.sessionCount}</strong></span>
-                  <span>Cost: <strong style={{color: 'var(--amber)'}}>{formatCost(currentProject.aggregate?.totalCost)}</strong></span>
-                  <span>Time: <strong style={{color: 'var(--blue)'}}>{formatDuration(currentProject.aggregate?.totalDurationMs)}</strong></span>
+                  <span>Sessions: <strong>{projectStats ? projectStats.sessionCount : currentProject.sessionCount}</strong></span>
+                  <span>Cost: <strong style={{color: 'var(--amber)'}}>{formatCost(projectStats ? projectStats.totalCost : currentProject.aggregate?.totalCost)}</strong></span>
+                  <span>Time: <strong style={{color: 'var(--blue)'}}>{formatDuration(projectStats ? projectStats.totalDurationMs : currentProject.aggregate?.totalDurationMs)}</strong></span>
                 </div>
               </div>
               {loadingSessions ? (
@@ -1242,7 +1258,7 @@ function App() {
               ) : (
                 <div className="empty-state">No sessions found</div>
               )}
-              <Rollup aggregate={currentProject.aggregate} beads={beadsStats} />
+              <Rollup aggregate={projectStats || currentProject.aggregate} beads={beadsStats} />
             </>
           ) : (
             <div className="empty-state">Select a project</div>

@@ -240,7 +240,8 @@ app.get('/api/stats', async (req, res) => {
   try {
     const allSessions = Array.from(scanner.sessionCache.values());
     const range = timerange.parseRange(req.query);
-    const sessions = timerange.filterSessions(allSessions, range);
+    const projectSessions = timerange.filterByProject(allSessions, req.query.project);
+    const sessions = timerange.filterSessions(projectSessions, range);
     const aggregate = scanner.aggregateSessions(sessions);
     const activeSessions = scanner.getActiveSessions();
 

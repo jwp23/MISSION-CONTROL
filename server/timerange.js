@@ -30,4 +30,8 @@ function filterSessions(sessions, range) {
   if (range.from === null && range.to === null) return sessions;
   return sessions.filter((s) => inRange(s.firstTimestamp, range));
 }
-module.exports = { toMs, parseRange, inRange, filterSessions };
+function filterByProject(sessions, encodedPath) {
+  if (!encodedPath) return sessions;
+  return sessions.filter((s) => s.encodedPath === encodedPath);
+}
+module.exports = { toMs, parseRange, inRange, filterSessions, filterByProject };
