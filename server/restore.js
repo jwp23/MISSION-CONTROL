@@ -21,6 +21,12 @@ function findBinary(bin) {
   }
 }
 
+// "exec" replaces the intermediate bash process rather than spawning claude as its child.
+function buildResumeCmd(cwd, sessionId, { useExec } = {}) {
+  const claudeCmd = `${useExec ? 'exec ' : ''}claude --resume ${shellQuote(sessionId)}`;
+  return `cd ${shellQuote(cwd)} && ${claudeCmd}`;
+}
+
 function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
   const terminal = TERMINALS[terminalName];
   if (!terminal) {
@@ -29,8 +35,10 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
 
   // macOS + ghostty: use AppleScript (legacy path)
   if (platform === 'darwin' && terminalName === 'ghostty') {
-    const safeCwd = cwd.replace(/["\\]/g, '\\$&');
-    const safeId = sessionId.replace(/["\\]/g, '\\$&');
+    // keystroke "types" this text directly into the destination shell, so it must
+    // be shell-quoted (not just AppleScript-escaped) to neutralize shell metacharacters.
+    const typedCmd = buildResumeCmd(cwd, sessionId);
+    const safeTypedCmd = typedCmd.replace(/["\\]/g, '\\$&');
     const script = `
       tell application "Ghostty"
         activate
@@ -40,7 +48,7 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
         tell process "Ghostty"
           keystroke "n" using command down
           delay 0.3
-          keystroke "cd ${safeCwd} && claude --resume ${safeId}"
+          keystroke "${safeTypedCmd}"
           key code 36
         end tell
       end tell
@@ -48,13 +56,12 @@ function buildLaunchArgs(terminalName, sessionId, cwd, platform) {
     return { type: 'applescript', script, partial: false };
   }
 
-  const resumeCmd = `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(sessionId)}`;
-
   // Full-support terminals: launch with command execution
   if (terminal.full) {
+    const execCmd = buildResumeCmd(cwd, sessionId, { useExec: true });
     const args = terminal.execFlag
-      ? [terminal.execFlag, 'bash', '-c', resumeCmd]
-      : ['bash', '-c', resumeCmd];
+      ? [terminal.execFlag, 'bash', '-c', execCmd]
+      : ['bash', '-c', execCmd];
     return { type: 'spawn', bin: terminal.bin, args, partial: false };
   }
 

