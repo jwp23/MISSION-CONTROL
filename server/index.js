@@ -14,6 +14,12 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 config.load();
 sessionState.load();
 
+// Initialize pricing with history persistence
+const pricing = require('./pricing');
+pricing.init({});
+pricing.refresh().then((changed) => { if (changed) console.log('pricing: history updated from LiteLLM'); });
+pricing.startAutoRefresh();
+
 // Build history index on startup (async)
 let historyIndex = {};
 const cfg = config.get();

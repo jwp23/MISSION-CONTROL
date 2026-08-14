@@ -44,3 +44,27 @@ describe('resolvePricing', () => {
     assert.equal(resolvePricing(h, 'gpt-4', Date.parse('2026-10-01')), null);
   });
 });
+
+describe('init and refresh', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { init, getHistory, refresh } = require('./pricing');
+
+  it('initializes history from seed when missing and appends on refresh', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pricing-'));
+    const seedPath = path.join(dir, 'seed.json');
+    const historyPath = path.join(dir, 'history.json');
+    fs.writeFileSync(seedPath, JSON.stringify({ entries: [{ effectiveFrom: '2025-01-01', prices: { 'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } } }] }));
+    init({ historyPath, seedPath });
+    assert.equal(getHistory().entries.length, 1);
+    const fakeFetch = async () => ({ ok: true, json: async () => ({ 'claude-opus-5': { litellm_provider: 'anthropic', input_cost_per_token: 6e-6, output_cost_per_token: 2.5e-5 } }) });
+    assert.equal(await refresh(fakeFetch), true);
+    assert.equal(getHistory().entries.length, 2);
+    assert.equal(JSON.parse(fs.readFileSync(historyPath)).entries.length, 2);
+  });
+  it('refresh failure resolves false and keeps history', async () => {
+    const failFetch = async () => { throw new Error('offline'); };
+    assert.equal(await refresh(failFetch), false);
+  });
+});

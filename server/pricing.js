@@ -1,5 +1,11 @@
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
 const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+
+let moduleHistory = null;
+let moduleHistoryPath = null;
 
 function normalizeLitellm(json) {
   const out = {};
@@ -48,4 +54,59 @@ function resolvePricing(history, model, timestampMs) {
   return best ? entry.prices[best] : null;
 }
 
-module.exports = { LITELLM_URL, normalizeLitellm, appendIfChanged, resolvePricing };
+function init(opts = {}) {
+  moduleHistoryPath = opts.historyPath || path.join(__dirname, '..', 'pricing-history.json');
+  const seedPath = opts.seedPath || path.join(__dirname, 'pricing-seed.json');
+
+  if (fs.existsSync(moduleHistoryPath)) {
+    moduleHistory = JSON.parse(fs.readFileSync(moduleHistoryPath, 'utf-8'));
+  } else {
+    // Copy seed to history
+    const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+    moduleHistory = seed;
+    fs.writeFileSync(moduleHistoryPath, JSON.stringify(seed, null, 2));
+  }
+
+  return moduleHistory;
+}
+
+function getHistory() {
+  if (!moduleHistory) throw new Error('pricing.init() not called');
+  return moduleHistory;
+}
+
+async function refresh(fetchFn = global.fetch) {
+  if (!moduleHistory) throw new Error('pricing.init() not called');
+
+  try {
+    const res = await fetchFn(LITELLM_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const normalized = normalizeLitellm(json);
+    const today = new Date().toISOString().slice(0, 10);
+    const changed = appendIfChanged(moduleHistory, normalized, today);
+    if (changed) {
+      fs.writeFileSync(moduleHistoryPath, JSON.stringify(moduleHistory, null, 2));
+    }
+    return changed;
+  } catch (err) {
+    console.log(`pricing: using last known prices (${err.message})`);
+    return false;
+  }
+}
+
+function startAutoRefresh(intervalMs = 24 * 60 * 60 * 1000) {
+  const timer = setInterval(refresh, intervalMs);
+  timer.unref();
+}
+
+module.exports = {
+  LITELLM_URL,
+  normalizeLitellm,
+  appendIfChanged,
+  resolvePricing,
+  init,
+  getHistory,
+  refresh,
+  startAutoRefresh
+};
