@@ -932,6 +932,14 @@ function Rollup({ aggregate, beads }) {
           </div>
         </div>
       )}
+      {beads && beads.hasBeads && (
+        <div className="rollup-section">
+          <div className="rollup-title">Beads</div>
+          <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
+          <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
+          <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+        </div>
+      )}
       <div className="rollup-section">
         <div className="rollup-title">Totals</div>
         <div><span className="rollup-label">Input</span> <span className="rollup-value">{formatTokens(aggregate.totalInputTokens)}</span></div>
@@ -946,14 +954,6 @@ function Rollup({ aggregate, beads }) {
         <div><span className="rollup-label">Est. Manual</span> <span className="rollup-value cost">{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
         <div><span className="rollup-label">Time Saved</span> <span className="rollup-value green">{formatDuration(aggregate.timeSavedMs)}</span></div>
       </div>
-      {beads && beads.hasBeads && (
-        <div className="rollup-section">
-          <div className="rollup-title">Beads</div>
-          <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
-          <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
-          <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1206,7 +1206,7 @@ function App() {
               ) : (
                 <div className="empty-state">No sessions found</div>
               )}
-              <Rollup aggregate={stats} />
+              <Rollup aggregate={stats} beads={beadsStats} />
             </>
           ) : currentProject ? (
             <>
