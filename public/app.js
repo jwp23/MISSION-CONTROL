@@ -179,11 +179,87 @@ function LineChart({ data, title, onSelectRange }) {
   );
 }
 
-const MODEL_COLORS = {
-  opus: '#ff6b35',
-  sonnet: '#4da6ff',
-  haiku: '#00cc6a'
+// Model display names (from shortModel) that don't match a known family fall
+// back to the raw model id and are grouped into "Other" rather than dropped.
+const MODEL_FAMILY_ORDER = ['fable', 'mythos', 'opus', 'sonnet', 'haiku'];
+
+const MODEL_EXACT_COLORS = {
+  'Fable 5': '#b57bff',
+  'Mythos': '#e0aaff',
+  'Opus 5': '#ff6b35',
+  'Opus 4.6': '#cc4f22',
+  'Sonnet 5': '#4da6ff',
+  'Sonnet 4.6': '#2d6abf',
+  'Sonnet 4.5': '#7fc0ff',
+  'Haiku 4.5': '#00cc6a',
 };
+
+const MODEL_FAMILY_SHADES = {
+  fable: ['#b57bff', '#9a5eef', '#7d43df'],
+  mythos: ['#e0aaff', '#c98ef0', '#b072e0'],
+  opus: ['#ff6b35', '#cc4f22', '#995533'],
+  sonnet: ['#4da6ff', '#2d6abf', '#7fc0ff'],
+  haiku: ['#00cc6a', '#00995a', '#007a48'],
+};
+
+const MODEL_OTHER_COLOR = '#7a8a9e';
+
+function modelFamily(displayName) {
+  const first = displayName.split(' ')[0].toLowerCase();
+  return MODEL_FAMILY_ORDER.includes(first) ? first : null;
+}
+
+function modelVersion(displayName) {
+  const m = displayName.match(/[\d.]+/);
+  return m ? parseFloat(m[0]) : 0;
+}
+
+// Compact legend label ("Opus 4.6" -> "O4.6") so a ~6-7 series legend still
+// fits on one line at laptop widths; tooltips keep the full display name.
+function modelLegendLabel(displayName) {
+  const parts = displayName.split(' ');
+  return parts.length === 1 ? displayName : parts[0][0] + parts.slice(1).join('.');
+}
+
+// Deterministic stack order: family order (Fable, Mythos, Opus, Sonnet, Haiku),
+// newest version first within a family, unclassified names ("Other") last.
+function buildModelOrder(names) {
+  const byFamily = {};
+  const other = [];
+  for (const n of names) {
+    const fam = modelFamily(n);
+    if (fam) (byFamily[fam] = byFamily[fam] || []).push(n);
+    else other.push(n);
+  }
+  const order = [];
+  for (const fam of MODEL_FAMILY_ORDER) {
+    if (byFamily[fam]) order.push(...byFamily[fam].slice().sort((a, b) => modelVersion(b) - modelVersion(a)));
+  }
+  order.push(...other.sort());
+  return order;
+}
+
+// Exact display-name match first, else a shade cycled by family, else gray.
+function buildModelColors(names) {
+  const colors = {};
+  const remaining = [];
+  for (const n of names) {
+    if (MODEL_EXACT_COLORS[n]) colors[n] = MODEL_EXACT_COLORS[n];
+    else remaining.push(n);
+  }
+  const byFamily = {};
+  for (const n of remaining) {
+    const fam = modelFamily(n);
+    if (!fam) { colors[n] = MODEL_OTHER_COLOR; continue; }
+    (byFamily[fam] = byFamily[fam] || []).push(n);
+  }
+  for (const [fam, list] of Object.entries(byFamily)) {
+    const sorted = list.slice().sort((a, b) => modelVersion(b) - modelVersion(a));
+    const shades = MODEL_FAMILY_SHADES[fam] || [MODEL_OTHER_COLOR];
+    sorted.forEach((n, i) => { colors[n] = shades[Math.min(i, shades.length - 1)]; });
+  }
+  return colors;
+}
 
 function ModelChart({ data, title, onSelectRange }) {
   const [tooltip, setTooltip] = useState(null);
@@ -195,25 +271,30 @@ function ModelChart({ data, title, onSelectRange }) {
 
   if (!data || data.length === 0) return null;
 
-  // Normalize model names and compute daily percentages
-  const normalizeModel = (m) => {
-    if (m.includes('opus')) return 'opus';
-    if (m.includes('sonnet')) return 'sonnet';
-    if (m.includes('haiku')) return 'haiku';
-    return null; // skip unknown/synthetic
+  // Display name for a raw model id; anything shortModel can't classify
+  // (returns the raw id unchanged) is grouped into "Other" instead of dropped.
+  const displayModel = (m) => {
+    const name = shortModel(m);
+    return name === m ? 'Other' : name;
   };
+
+  const allNames = new Set();
+  for (const d of data) {
+    for (const model of Object.keys(d.models || {})) allNames.add(displayModel(model));
+  }
+  const modelOrder = buildModelOrder([...allNames]); // bottom to top for stacking
+  const modelColors = buildModelColors(modelOrder);
 
   const processed = data.map(d => {
     const byModel = {};
     let total = 0;
     for (const [model, tokens] of Object.entries(d.models || {})) {
-      const name = normalizeModel(model);
-      if (!name) continue;
+      const name = displayModel(model);
       byModel[name] = (byModel[name] || 0) + tokens;
       total += tokens;
     }
     const pcts = {};
-    for (const m of ['opus', 'sonnet', 'haiku']) {
+    for (const m of modelOrder) {
       pcts[m] = total > 0 ? (byModel[m] || 0) / total * 100 : 0;
     }
     return { ...d, pcts, total };
@@ -221,8 +302,6 @@ function ModelChart({ data, title, onSelectRange }) {
 
   const xAt = (i) => padL + (processed.length === 1 ? plotW / 2 : (i / (processed.length - 1)) * plotW);
   const yAt = (pct) => padT + plotH - (pct / 100) * plotH;
-
-  const modelOrder = ['haiku', 'sonnet', 'opus']; // bottom to top for stacking
 
   // Build stacked area paths
   const areas = {};
@@ -252,10 +331,10 @@ function ModelChart({ data, title, onSelectRange }) {
       <div className="chart-title">
         {title}
         <span className="chart-legend">
-          {['opus', 'sonnet', 'haiku'].map(m => (
+          {modelOrder.map((m, i) => (
             <span key={m}>
-              <span className="legend-dot" style={{background: MODEL_COLORS[m], marginLeft: m === 'opus' ? 0 : 8}}></span>
-              {' '}{m}
+              <span className="legend-dot" style={{background: modelColors[m], marginLeft: i === 0 ? 0 : 6}}></span>
+              {modelLegendLabel(m)}
             </span>
           ))}
         </span>
@@ -274,18 +353,18 @@ function ModelChart({ data, title, onSelectRange }) {
         ))}
         {/* Stacked areas */}
         {modelOrder.map(model => (
-          <path key={model} d={areas[model]} fill={MODEL_COLORS[model]} opacity="0.25" />
+          <path key={model} d={areas[model]} fill={modelColors[model]} opacity="0.25" />
         ))}
         {/* Lines on top */}
         {modelOrder.map(model => (
-          <polyline key={`l-${model}`} points={lines[model]} fill="none" stroke={MODEL_COLORS[model]} strokeWidth="1" />
+          <polyline key={`l-${model}`} points={lines[model]} fill="none" stroke={modelColors[model]} strokeWidth="1" />
         ))}
         {/* Hover targets */}
         {processed.map((d, i) => (
           <rect key={i} x={xAt(i) - (plotW / processed.length / 2)} y={padT} width={plotW / processed.length} height={plotH}
             fill="transparent" cursor="pointer"
             onMouseEnter={(e) => {
-              const parts = ['opus', 'sonnet', 'haiku']
+              const parts = modelOrder
                 .filter(m => d.pcts[m] > 0)
                 .map(m => `${m}: ${d.pcts[m].toFixed(0)}%`);
               setTooltip({
