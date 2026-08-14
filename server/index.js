@@ -127,12 +127,12 @@ app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
 app.get('/api/sessions/all', async (req, res) => {
   try {
     const allSessions = Array.from(scanner.sessionCache.values());
-    const seen = new Map();
+    const dedupedSessions = scanner.dedupeBySessionId(allSessions);
 
-    for (const s of allSessions) {
+    const entries = dedupedSessions.map(s => {
       const ss = sessionState.getStatus(s.sessionId);
       const summaryOverride = sessionState.getSummary(s.sessionId);
-      const entry = {
+      return {
         sessionId: s.sessionId,
         sessionName: s.sessionName || null,
         summary: summaryOverride != null ? summaryOverride : s.summary,
@@ -154,17 +154,11 @@ app.get('/api/sessions/all', async (req, res) => {
         encodedPath: s.encodedPath,
         projectPath: s.projectPath
       };
-
-      const existing = seen.get(s.sessionId);
-      if (!existing || (s.lastTimestamp || 0) > (existing.lastTimestamp || 0)) {
-        seen.set(s.sessionId, entry);
-      }
-    }
+    });
 
     // Sort newest first
     const range = timerange.parseRange(req.query);
-    const dedupedResult = Array.from(seen.values());
-    const filtered = timerange.filterSessions(dedupedResult, range).sort((a, b) =>
+    const filtered = timerange.filterSessions(entries, range).sort((a, b) =>
       (b.firstTimestamp || 0) - (a.firstTimestamp || 0)
     );
     res.json(filtered);
@@ -239,8 +233,9 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const allSessions = Array.from(scanner.sessionCache.values());
+    const dedupedSessions = scanner.dedupeBySessionId(allSessions);
     const range = timerange.parseRange(req.query);
-    const projectSessions = timerange.filterByProject(allSessions, req.query.project);
+    const projectSessions = timerange.filterByProject(dedupedSessions, req.query.project);
     const sessions = timerange.filterSessions(projectSessions, range);
     const aggregate = scanner.aggregateSessions(sessions);
     const activeSessions = scanner.getActiveSessions();

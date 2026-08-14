@@ -276,6 +276,39 @@ async function getProjectSessions(project, historyIndex) {
 }
 
 /**
+ * Deduplicate sessions by sessionId, keeping the entry with the latest lastTimestamp.
+ * Sessions without a sessionId pass through unchanged.
+ */
+function dedupeBySessionId(sessions) {
+  const seen = new Map();
+
+  for (const s of sessions) {
+    // Sessions without sessionId pass through
+    if (!s.sessionId) {
+      continue;
+    }
+
+    const existing = seen.get(s.sessionId);
+    const newTimestamp = s.lastTimestamp || 0;
+    const existingTimestamp = existing ? (existing.lastTimestamp || 0) : -Infinity;
+
+    if (!existing || newTimestamp > existingTimestamp) {
+      seen.set(s.sessionId, s);
+    }
+  }
+
+  // Return deduped entries + all sessions without sessionId
+  const deduped = Array.from(seen.values());
+  for (const s of sessions) {
+    if (!s.sessionId) {
+      deduped.push(s);
+    }
+  }
+
+  return deduped;
+}
+
+/**
  * Aggregate metrics across multiple sessions
  */
 function aggregateSessions(sessions) {
@@ -349,6 +382,7 @@ module.exports = {
   listSessionFiles,
   getActiveSessions,
   getProjectSessions,
+  dedupeBySessionId,
   aggregateSessions,
   sessionCache
 };
