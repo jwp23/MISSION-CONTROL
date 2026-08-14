@@ -328,6 +328,73 @@ describe('primaryModel selection', () => {
   });
 });
 
+describe('dedupeBySessionId', () => {
+  it('keeps only the latest entry per sessionId', () => {
+    const sessions = [
+      { sessionId: 'sess-a', lastTimestamp: 1000, data: 'old' },
+      { sessionId: 'sess-a', lastTimestamp: 2000, data: 'new' }
+    ];
+
+    const deduped = scanner.dedupeBySessionId(sessions);
+    assert.equal(deduped.length, 1);
+    assert.equal(deduped[0].lastTimestamp, 2000);
+    assert.equal(deduped[0].data, 'new');
+  });
+
+  it('leaves distinct sessionIds untouched', () => {
+    const sessions = [
+      { sessionId: 'sess-a', lastTimestamp: 1000 },
+      { sessionId: 'sess-b', lastTimestamp: 1500 },
+      { sessionId: 'sess-c', lastTimestamp: 2000 }
+    ];
+
+    const deduped = scanner.dedupeBySessionId(sessions);
+    assert.equal(deduped.length, 3);
+    assert.ok(deduped.find(s => s.sessionId === 'sess-a'));
+    assert.ok(deduped.find(s => s.sessionId === 'sess-b'));
+    assert.ok(deduped.find(s => s.sessionId === 'sess-c'));
+  });
+
+  it('preserves sessions without a sessionId (pass through)', () => {
+    const sessions = [
+      { data: 'no-id-1' },
+      { sessionId: 'sess-a', lastTimestamp: 1000 },
+      { data: 'no-id-2' }
+    ];
+
+    const deduped = scanner.dedupeBySessionId(sessions);
+    assert.equal(deduped.length, 3);
+    assert.ok(deduped.find(s => !s.sessionId && s.data === 'no-id-1'));
+    assert.ok(deduped.find(s => !s.sessionId && s.data === 'no-id-2'));
+    assert.ok(deduped.find(s => s.sessionId === 'sess-a'));
+  });
+
+  it('uses latest lastTimestamp when comparing duplicates', () => {
+    const sessions = [
+      { sessionId: 'sess-x', lastTimestamp: 3000, label: 'third' },
+      { sessionId: 'sess-x', lastTimestamp: 1000, label: 'first' },
+      { sessionId: 'sess-x', lastTimestamp: 2000, label: 'second' }
+    ];
+
+    const deduped = scanner.dedupeBySessionId(sessions);
+    assert.equal(deduped.length, 1);
+    assert.equal(deduped[0].lastTimestamp, 3000);
+    assert.equal(deduped[0].label, 'third');
+  });
+
+  it('treats undefined lastTimestamp as 0 when comparing', () => {
+    const sessions = [
+      { sessionId: 'sess-y', lastTimestamp: undefined, label: 'undefined' },
+      { sessionId: 'sess-y', lastTimestamp: 100, label: 'has-timestamp' }
+    ];
+
+    const deduped = scanner.dedupeBySessionId(sessions);
+    assert.equal(deduped.length, 1);
+    assert.equal(deduped[0].lastTimestamp, 100);
+    assert.equal(deduped[0].label, 'has-timestamp');
+  });
+});
+
 describe('aggregateSessions with subagent data', () => {
   it('aggregates tokensByModel across sessions including subagent models', () => {
     const sessions = [

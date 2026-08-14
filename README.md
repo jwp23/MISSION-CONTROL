@@ -11,7 +11,9 @@ Built for anyone using [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 - **Calculates costs** per session using pricing fetched from LiteLLM at startup and refreshed daily
 - **Estimates time saved** based on a configurable multiplier (e.g., "this would have taken 8x longer without Claude")
 - **Interactive charts** -- daily usage trends, model split over time, monthly spend vs. plan limits
-- **Session management** -- mark sessions as WIP/Complete, edit summaries, search across all sessions
+- **Time-window filtering** -- drag horizontally on any chart (Grafana-style) to select a date range; all dashboard stats and tables instantly filter to your window. Hit Esc or the reset chip to clear.
+- **Beads integration** -- projects with a `.beads/` directory show BEADS (closed/created) and $/BEAD cost-per-bead metrics, aggregated across projects when none selected, read-only from `bd export`
+- **Session management** -- mark sessions as WIP/Complete, edit summaries, search across all sessions; adaptive layout hides lower-priority columns on smaller screens for legibility
 - **Resume sessions** -- launch a Claude Code `--resume` directly from the dashboard into your configured terminal
 
 ## Screenshot

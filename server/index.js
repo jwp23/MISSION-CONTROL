@@ -5,6 +5,8 @@ const scanner = require('./scanner');
 const parser = require('./parser');
 const restore = require('./restore');
 const sessionState = require('./session-state');
+const timerange = require('./timerange');
+const beads = require('./beads');
 
 const app = express();
 app.use(express.json());
@@ -114,7 +116,8 @@ app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
         seen.set(s.sessionId, s);
       }
     }
-    res.json(Array.from(seen.values()));
+    const filtered = timerange.filterSessions(Array.from(seen.values()), timerange.parseRange(req.query));
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -124,12 +127,12 @@ app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
 app.get('/api/sessions/all', async (req, res) => {
   try {
     const allSessions = Array.from(scanner.sessionCache.values());
-    const seen = new Map();
+    const dedupedSessions = scanner.dedupeBySessionId(allSessions);
 
-    for (const s of allSessions) {
+    const entries = dedupedSessions.map(s => {
       const ss = sessionState.getStatus(s.sessionId);
       const summaryOverride = sessionState.getSummary(s.sessionId);
-      const entry = {
+      return {
         sessionId: s.sessionId,
         sessionName: s.sessionName || null,
         summary: summaryOverride != null ? summaryOverride : s.summary,
@@ -151,18 +154,14 @@ app.get('/api/sessions/all', async (req, res) => {
         encodedPath: s.encodedPath,
         projectPath: s.projectPath
       };
-
-      const existing = seen.get(s.sessionId);
-      if (!existing || (s.lastTimestamp || 0) > (existing.lastTimestamp || 0)) {
-        seen.set(s.sessionId, entry);
-      }
-    }
+    });
 
     // Sort newest first
-    const result = Array.from(seen.values()).sort((a, b) =>
+    const range = timerange.parseRange(req.query);
+    const filtered = timerange.filterSessions(entries, range).sort((a, b) =>
       (b.firstTimestamp || 0) - (a.firstTimestamp || 0)
     );
-    res.json(result);
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -222,7 +221,9 @@ app.get('/api/search', async (req, res) => {
       }
     }
 
-    res.json(results.slice(0, 50)); // Limit results
+    const range = timerange.parseRange(req.query);
+    const filtered = timerange.filterSessions(results, range);
+    res.json(filtered.slice(0, 50)); // Limit results
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -232,7 +233,11 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const allSessions = Array.from(scanner.sessionCache.values());
-    const aggregate = scanner.aggregateSessions(allSessions);
+    const dedupedSessions = scanner.dedupeBySessionId(allSessions);
+    const range = timerange.parseRange(req.query);
+    const projectSessions = timerange.filterByProject(dedupedSessions, req.query.project);
+    const sessions = timerange.filterSessions(projectSessions, range);
+    const aggregate = scanner.aggregateSessions(sessions);
     const activeSessions = scanner.getActiveSessions();
 
     res.json({
@@ -253,6 +258,7 @@ app.get('/api/daily-stats', async (req, res) => {
     if (req.query.project) {
       allSessions = allSessions.filter(s => s.encodedPath === req.query.project);
     }
+    allSessions = timerange.filterSessions(allSessions, timerange.parseRange(req.query));
     const dailyMap = {}; // 'YYYY-MM-DD' -> { tokens, cost, sessions, durationMs }
 
     for (const s of allSessions) {
@@ -290,6 +296,7 @@ app.get('/api/monthly-stats', async (req, res) => {
     if (req.query.project) {
       allSessions = allSessions.filter(s => s.encodedPath === req.query.project);
     }
+    allSessions = timerange.filterSessions(allSessions, timerange.parseRange(req.query));
     const monthlyMap = {}; // 'YYYY-MM' -> { month, cost, tokens, sessions, durationMs }
 
     for (const s of allSessions) {
@@ -380,6 +387,26 @@ app.get('/api/wip', (req, res) => {
   try {
     const wip = sessionState.getWipSessions();
     res.json(wip);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/beads', async (req, res) => {
+  try {
+    const range = timerange.parseRange(req.query);
+    const projects = scanner.discoverProjects();
+    const targets = req.query.project
+      ? projects.filter((p) => p.encodedPath === req.query.project)
+      : projects;
+    const withBeads = targets.filter((p) => beads.hasBeads(p.path));
+    if (withBeads.length === 0) return res.json({ hasBeads: false, created: 0, closed: 0 });
+    let created = 0, closed = 0;
+    for (const p of withBeads) {
+      const counts = beads.countBeads(await beads.getBeadRecords(p.path), range);
+      created += counts.created; closed += counts.closed;
+    }
+    res.json({ hasBeads: true, created, closed });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
