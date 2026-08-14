@@ -1040,6 +1040,7 @@ function App() {
   const [wipSessions, setWipSessions] = useState({});
   const [timeRange, setTimeRange] = useState({ from: null, to: null });
   const [beadsStats, setBeadsStats] = useState(null);
+  const [globalBeads, setGlobalBeads] = useState(null);
   const [projectStats, setProjectStats] = useState(null);
 
   // Returns '' or a from/to query string fragment, prefixed with sep ('?' or '&')
@@ -1127,6 +1128,8 @@ function App() {
     fetch(`/api/daily-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setDailyStats(data); }).catch(console.error);
     fetch(`/api/monthly-stats${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setMonthlyStats(data); }).catch(console.error);
     fetch(`/api/beads${projectParam}${rangeQS(projectParam ? '&' : '?')}`).then(r => r.json()).then(data => { if (!cancelled) setBeadsStats(data); }).catch(() => { if (!cancelled) setBeadsStats(null); });
+    // Fetch global beads (for TopBar headline $/BEAD) — always global, respecting only time window
+    fetch(`/api/beads${rangeQS('?')}`).then(r => r.json()).then(data => { if (!cancelled) setGlobalBeads(data); }).catch(() => { if (!cancelled) setGlobalBeads(null); });
 
     return () => { cancelled = true; };
   }, [selectedProject, timeRange.from, timeRange.to]);
@@ -1223,7 +1226,7 @@ function App() {
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
-        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={beadsStats} />
+        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads} />
       <div className="main-layout">
         <Sidebar
           projects={projects}
