@@ -6,6 +6,7 @@ const parser = require('./parser');
 const restore = require('./restore');
 const sessionState = require('./session-state');
 const timerange = require('./timerange');
+const beads = require('./beads');
 
 const app = express();
 app.use(express.json());
@@ -388,6 +389,26 @@ app.get('/api/wip', (req, res) => {
   try {
     const wip = sessionState.getWipSessions();
     res.json(wip);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/beads', async (req, res) => {
+  try {
+    const range = timerange.parseRange(req.query);
+    const projects = scanner.discoverProjects();
+    const targets = req.query.project
+      ? projects.filter((p) => p.encodedPath === req.query.project)
+      : projects;
+    const withBeads = targets.filter((p) => beads.hasBeads(p.path));
+    if (withBeads.length === 0) return res.json({ hasBeads: false, created: 0, closed: 0 });
+    let created = 0, closed = 0;
+    for (const p of withBeads) {
+      const counts = beads.countBeads(await beads.getBeadRecords(p.path), range);
+      created += counts.created; closed += counts.closed;
+    }
+    res.json({ hasBeads: true, created, closed });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
