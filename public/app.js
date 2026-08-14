@@ -693,7 +693,7 @@ function StatusDot({ sessionId, status, onChange }) {
   );
 }
 
-function EditableSummary({ sessionId, summary, onSave }) {
+function EditableSummary({ sessionId, sessionName, summary, onSave }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(summary || '');
 
@@ -728,9 +728,11 @@ function EditableSummary({ sessionId, summary, onSave }) {
     <span
       className="summary-text"
       onDoubleClick={() => { setValue(summary || ''); setEditing(true); }}
-      title="Double-click to edit"
+      title={sessionName ? `${sessionName}\n\nDouble-click to edit summary` : 'Double-click to edit'}
     >
-      {summary || '(no summary)'}
+      {sessionName && <span className="summary-name">{sessionName}</span>}
+      {sessionName && summary && <span className="summary-sep"> · </span>}
+      {summary || (sessionName ? '' : '(no summary)')}
     </span>
   );
 }
@@ -762,7 +764,7 @@ const COLUMNS = [
           onClick={(e) => { e.stopPropagation(); ctx.handleCopyId(s.sessionId); }}
           title={s.sessionName ? `${s.sessionName}\n${s.sessionId}` : s.sessionId}
         >
-          {ctx.copied === s.sessionId ? 'copied' : (s.sessionName || 'sessionid')}
+          {ctx.copied === s.sessionId ? 'copied' : 'sessionid'}
         </button>
       )
     )
@@ -813,8 +815,8 @@ const COLUMNS = [
     )
   },
   {
-    key: 'summary', label: 'Summary', className: 'col-summary', prio: 1, sortField: 'summary',
-    render: (s, ctx) => <EditableSummary sessionId={s.sessionId} summary={s.summary} onSave={ctx.onSummaryEdit} />
+    key: 'summary', label: 'Summary / Session Name', className: 'col-summary', prio: 1, sortField: 'summary',
+    render: (s, ctx) => <EditableSummary sessionId={s.sessionId} sessionName={s.sessionName} summary={s.summary} onSave={ctx.onSummaryEdit} />
   },
   {
     key: 'model', label: 'Model', className: 'col-model', prio: 2, sortField: 'primaryModel',

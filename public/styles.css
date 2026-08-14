@@ -547,10 +547,6 @@ body {
 .sessionid-btn.named {
   color: var(--amber);
   border-color: var(--amber);
-  font-size: 9px;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .sessionid-btn.named:hover {
@@ -565,6 +561,15 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.summary-name {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.summary-sep {
+  color: var(--text-dim);
 }
 
 .summary-edit-input {

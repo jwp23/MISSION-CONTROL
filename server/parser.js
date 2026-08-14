@@ -51,6 +51,14 @@ function extractUserText(content) {
 }
 
 /**
+ * Remove ANSI SGR/CSI escape sequences left behind by terminal styling
+ */
+function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+/**
  * True if text looks like a tool ID, UUID, file path, or other noise
  */
 function isNoiseText(text) {
@@ -69,6 +77,8 @@ function collectUserMessage(entry, userMessages) {
   if (userMessages.length >= 5 || !entry.message) return;
   let text = extractUserText(entry.message.content);
   if (!text || entry.isMeta || text.length <= 5) return;
+  // Strip ANSI escape sequences — terminal styling captured from pasted output
+  text = stripAnsi(text);
   // Strip XML/HTML tags. (?=([^>]+))\1 emulates an atomic group so the
   // engine never re-tries shorter matches (avoids super-linear backtracking).
   text = text.replace(/<(?=([^>]+))\1>/g, '').trim();
