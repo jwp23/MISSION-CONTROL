@@ -87,7 +87,7 @@ Session data lives in `.jsonl` files inside those encoded directories. MISSION-C
 Each session file is a sequence of JSON lines containing user messages, assistant responses (with token usage), and system events. The parser extracts:
 
 - **Token counts** -- input, output, cache read, cache write (per model)
-- **Cost** -- calculated from token counts and configured pricing
+- **Cost** -- calculated from token counts and fetched pricing (date-aware; config override optional)
 - **Summary** -- auto-generated from the first few user messages and tool actions
 - **Duration** -- from first to last timestamp
 - **Tool usage** -- counts of Edit, Write, Bash, Grep, etc.

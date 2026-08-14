@@ -75,14 +75,29 @@ describe('init and refresh', () => {
 });
 
 describe('getPricing with lazy init', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
   const { getPricing, _resetForTesting, _setConfigForTest } = require('./pricing');
 
   it('returns seed pricing without explicit init when config is empty', () => {
-    _resetForTesting();
-    _setConfigForTest({});
-    const price = getPricing('claude-opus-5', null);
-    assert.ok(price, 'getPricing should return a price object');
-    assert.equal(price.input, 5, 'should use seed pricing for opus input');
-    assert.equal(price.output, 25, 'should use seed pricing for opus output');
+    // Check if pricing-history.json existed before test
+    const historyPath = path.join(__dirname, '..', 'pricing-history.json');
+    const existedBefore = fs.existsSync(historyPath);
+
+    try {
+      _resetForTesting();
+      _setConfigForTest({});
+      const price = getPricing('claude-opus-5', null);
+      assert.ok(price, 'getPricing should return a price object');
+      assert.equal(price.input, 5, 'should use seed pricing for opus input');
+      assert.equal(price.output, 25, 'should use seed pricing for opus output');
+    } finally {
+      // Clean up: remove pricing-history.json if test created it
+      if (!existedBefore && fs.existsSync(historyPath)) {
+        fs.unlinkSync(historyPath);
+      }
+      // Reset module state
+      _resetForTesting();
+    }
   });
 });

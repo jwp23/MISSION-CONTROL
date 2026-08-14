@@ -17,7 +17,7 @@ Purpose: Running log of all notable changes, features, and workflow updates.
   - Historical sessions resolved to pricing in effect on their date (not repriced at current rates)
   - Offline-safe: falls back to last known history if LiteLLM unreachable
   - `pricing` block in `config.json` now acts as manual override only (optional, no longer required)
-  - `config.example.json` no longer includes pricing block; tests pass with D3 fallback
+  - `config.example.json` no longer includes pricing block; unknown models fall back to latest known prices (or zero when unmatched)
 
 - Story 2: Configurable Terminal Emulator for Session Launch — all 6 acceptance criteria implemented
   - `config.example.json` accepts `terminal` key (default: `ghostty`)
