@@ -38,37 +38,58 @@ body {
   flex-direction: column;
 }
 
-/* Top Bar */
+/* Top Bar — the dashboard headline strip: dim labels, bright values */
 .top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  gap: 12px;
+  padding: 6px 14px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  min-height: 36px;
+  border-bottom: 2px solid var(--border-active);
+  min-height: 46px;
 }
 
 .top-bar-title {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--green);
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  white-space: nowrap;
 }
 
 .top-bar-stats {
   display: flex;
-  gap: 16px;
-  font-size: 13px;
+  align-items: flex-end;
+  gap: 20px;
 }
 
 .stat-item {
-  color: var(--text-secondary);
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
 }
 
 .stat-value {
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text-primary);
-  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Money reads loudest in the strip */
+.stat-item.money .stat-value {
+  font-size: 17px;
 }
 
 .stat-value.cost { color: var(--amber); }
@@ -79,6 +100,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .wip-filter-btn {
@@ -126,6 +148,7 @@ body {
   font-size: 13px;
   padding: 4px 8px;
   width: 200px;
+  min-width: 100px; /* lets the field give way instead of the stats wrapping */
   outline: none;
 }
 
@@ -647,7 +670,7 @@ body {
   display: flex;
   gap: 12px;
   padding: 8px 12px;
-  height: 140px;
+  height: 156px;
 }
 
 .chart-wrapper {
@@ -656,17 +679,24 @@ body {
   flex-direction: column;
 }
 
+/* Title on its own line so a long legend wraps beneath it instead of
+   colliding with the title or squeezing the plot. */
+.chart-header {
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
 .chart-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 1px;
 }
 
 .chart-svg {
   flex: 1;
+  min-height: 0; /* let the svg shrink to the panel instead of overflowing it */
   width: 100%;
   overflow: visible;
 }
@@ -692,12 +722,24 @@ body {
 }
 
 .chart-legend {
-  float: right;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px 10px;
+  margin-top: 2px;
   font-size: 11px;
   font-weight: 400;
+  line-height: 14px;
   color: var(--text-secondary);
   text-transform: none;
   letter-spacing: 0;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .legend-dot {
@@ -705,8 +747,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  vertical-align: middle;
-  margin-right: 2px;
+  flex-shrink: 0;
 }
 
 .chart-tooltip {
@@ -724,12 +765,13 @@ body {
 /* Rollup Section */
 .rollup {
   background: var(--bg-secondary);
-  border-top: 1px solid var(--border);
-  padding: 8px 12px;
+  border-top: 2px solid var(--border-active);
+  padding: 9px 14px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 20px;
   font-size: 13px;
+  line-height: 1.5;
   min-height: 60px;
 }
 
@@ -765,45 +807,80 @@ body {
   background: var(--border-active);
 }
 
+/* Section headers anchor each column: uppercase, tracked, ruled off */
 .rollup-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 1.2px;
+  padding-bottom: 3px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
 }
+
+/* Labels recede, values lead */
+.rollup-label {
+  color: var(--text-dim);
+}
+
+.rollup-label::after {
+  content: ':';
+}
+
+.rollup-value {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.rollup-value.cost { color: var(--amber); }
+.rollup-value.time { color: var(--blue); }
+.rollup-value.green { color: var(--green); }
 
 .model-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 
 .subagent-summary {
   font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 
 .subagent-model-row {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-left: 6px;
+  margin-bottom: 2px;
+}
+
+/* Fixed track keeps every model name on the same left edge */
+.model-bar-track {
+  width: 56px;
+  height: 8px;
+  margin-top: 6px;
+  flex-shrink: 0;
+  background: var(--border);
+  border-radius: 1px;
 }
 
 .model-bar-fill {
-  height: 8px;
+  height: 100%;
   background: var(--green-dim);
   border-radius: 1px;
   min-width: 2px;
 }
 
 .model-bar-label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  white-space: nowrap;
+}
+
+.model-name {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* Bottom Bar */

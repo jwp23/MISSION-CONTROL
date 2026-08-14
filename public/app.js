@@ -115,12 +115,16 @@ function LineChart({ data, title, onSelectRange }) {
 
   return (
     <div className="chart-wrapper">
-      <div className="chart-title">
-        {title}
-        <span className="chart-legend">
-          <span className="legend-dot" style={{background: '#ff6b35'}}></span> tokens
-          <span className="legend-dot" style={{background: '#4da6ff', marginLeft: 8}}></span> cost
-        </span>
+      <div className="chart-header">
+        <div className="chart-title">{title}</div>
+        <div className="chart-legend">
+          <span className="legend-item">
+            <span className="legend-dot" style={{background: '#ff6b35'}}></span> tokens
+          </span>
+          <span className="legend-item">
+            <span className="legend-dot" style={{background: '#4da6ff'}}></span> cost
+          </span>
+        </div>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
         onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
@@ -212,13 +216,6 @@ function modelFamily(displayName) {
 function modelVersion(displayName) {
   const m = displayName.match(/[\d.]+/);
   return m ? parseFloat(m[0]) : 0;
-}
-
-// Compact legend label ("Opus 4.6" -> "O4.6") so a ~6-7 series legend still
-// fits on one line at laptop widths; tooltips keep the full display name.
-function modelLegendLabel(displayName) {
-  const parts = displayName.split(' ');
-  return parts.length === 1 ? displayName : parts[0][0] + parts.slice(1).join('.');
 }
 
 // Deterministic stack order: family order (Fable, Mythos, Opus, Sonnet, Haiku),
@@ -328,16 +325,16 @@ function ModelChart({ data, title, onSelectRange }) {
 
   return (
     <div className="chart-wrapper">
-      <div className="chart-title">
-        {title}
-        <span className="chart-legend">
-          {modelOrder.map((m, i) => (
-            <span key={m}>
-              <span className="legend-dot" style={{background: modelColors[m], marginLeft: i === 0 ? 0 : 6}}></span>
-              {modelLegendLabel(m)}
+      <div className="chart-header">
+        <div className="chart-title">{title}</div>
+        <div className="chart-legend">
+          {modelOrder.map(m => (
+            <span className="legend-item" key={m}>
+              <span className="legend-dot" style={{background: modelColors[m]}}></span>
+              {m}
             </span>
           ))}
-        </span>
+        </div>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
         onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
@@ -433,12 +430,14 @@ function MonthlySpendChart({ data, title, onSelectRange }) {
 
   return (
     <div className="chart-wrapper">
-      <div className="chart-title">
-        {title}
-        <span className="chart-legend">
-          <span className="legend-dot" style={{background: 'var(--amber)'}}></span> spend
-          <span style={{marginLeft: 8, color: 'var(--green)', fontSize: '8px'}}>--- $100/mo Max Plan</span>
-        </span>
+      <div className="chart-header">
+        <div className="chart-title">{title}</div>
+        <div className="chart-legend">
+          <span className="legend-item">
+            <span className="legend-dot" style={{background: 'var(--amber)'}}></span> spend
+          </span>
+          <span className="legend-item" style={{color: 'var(--green)'}}>--- $100/mo Max Plan</span>
+        </div>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
         onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
@@ -531,23 +530,29 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
       <div className="top-bar-stats">
         <span className="stat-item">
-          PROJECTS <span className="stat-value green">{stats.projectCount || 0}</span>
+          <span className="stat-label">Projects</span>
+          <span className="stat-value green">{stats.projectCount || 0}</span>
         </span>
         <span className="stat-item">
-          SESSIONS <span className="stat-value">{stats.sessionCount || 0}</span>
+          <span className="stat-label">Sessions</span>
+          <span className="stat-value">{stats.sessionCount || 0}</span>
+        </span>
+        <span className="stat-item money">
+          <span className="stat-label">Est. Cost</span>
+          <span className="stat-value cost">{formatCost(stats.totalCost)}</span>
         </span>
         <span className="stat-item">
-          EST. COST <span className="stat-value cost">{formatCost(stats.totalCost)}</span>
+          <span className="stat-label">Time Saved</span>
+          <span className="stat-value time">{formatDuration(stats.timeSavedMs)}</span>
         </span>
         <span className="stat-item">
-          TIME SAVED <span className="stat-value time">{formatDuration(stats.timeSavedMs)}</span>
-        </span>
-        <span className="stat-item">
-          MULTIPLIER <span className="stat-value">{stats.multiplier || '-'}x</span>
+          <span className="stat-label">Multiplier</span>
+          <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
         {beads && beads.hasBeads && (
-          <span className="stat-item" title="$/Bead = spend ÷ beads closed for the current scope and window">
-            $/BEAD <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
+          <span className="stat-item money" title="$/Bead = spend ÷ beads closed for the current scope and window">
+            <span className="stat-label">$/Bead</span>
+            <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
           </span>
         )}
       </div>
@@ -897,9 +902,11 @@ function Rollup({ aggregate, beads }) {
             const pct = totalTokens > 0 ? (modelTotal / totalTokens * 100) : 0;
             return (
               <div className="model-bar" key={model}>
-                <div className="model-bar-fill" style={{ width: Math.max(pct, 1) + '%', maxWidth: '120px' }}></div>
+                <div className="model-bar-track">
+                  <div className="model-bar-fill" style={{ width: Math.max(pct, 1) + '%' }}></div>
+                </div>
                 <span className="model-bar-label">
-                  {shortModel(model)}: {formatTokens(modelTotal)} ({pct.toFixed(0)}%) — {formatCost(tokens.cost)}
+                  <span className="model-name">{shortModel(model)}</span> {formatTokens(modelTotal)} ({pct.toFixed(0)}%) <span className="rollup-value cost">{formatCost(tokens.cost)}</span>
                 </span>
               </div>
             );
@@ -918,7 +925,7 @@ function Rollup({ aggregate, beads }) {
               const count = subCountByModel[model] || 0;
               return (
                 <div className="subagent-model-row" key={model}>
-                  <span style={{color: 'var(--text-dim)'}}>{shortModel(model)}:</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · {formatCost(tokens.cost)}
+                  <span className="model-name">{shortModel(model)}</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · <span className="rollup-value cost">{formatCost(tokens.cost)}</span>
                 </div>
               );
             })}
@@ -927,24 +934,24 @@ function Rollup({ aggregate, beads }) {
       )}
       <div className="rollup-section">
         <div className="rollup-title">Totals</div>
-        <div><span style={{color: 'var(--text-dim)'}}>Input:</span> {formatTokens(aggregate.totalInputTokens)}</div>
-        <div><span style={{color: 'var(--text-dim)'}}>Output:</span> {formatTokens(aggregate.totalOutputTokens)}</div>
-        <div><span style={{color: 'var(--text-dim)'}}>Cache Read:</span> {formatTokens(aggregate.totalCacheReadTokens)}</div>
-        <div><span style={{color: 'var(--text-dim)'}}>Cache Write:</span> {formatTokens(aggregate.totalCacheWriteTokens)}</div>
-        <div><span style={{color: 'var(--text-dim)'}}>Tool Calls:</span> {aggregate.totalToolCalls}</div>
+        <div><span className="rollup-label">Input</span> <span className="rollup-value">{formatTokens(aggregate.totalInputTokens)}</span></div>
+        <div><span className="rollup-label">Output</span> <span className="rollup-value">{formatTokens(aggregate.totalOutputTokens)}</span></div>
+        <div><span className="rollup-label">Cache Read</span> <span className="rollup-value">{formatTokens(aggregate.totalCacheReadTokens)}</span></div>
+        <div><span className="rollup-label">Cache Write</span> <span className="rollup-value">{formatTokens(aggregate.totalCacheWriteTokens)}</span></div>
+        <div><span className="rollup-label">Tool Calls</span> <span className="rollup-value">{aggregate.totalToolCalls}</span></div>
       </div>
       <div className="rollup-section">
         <div className="rollup-title">Time</div>
-        <div><span style={{color: 'var(--text-dim)'}}>Claude Time:</span> <span style={{color: 'var(--blue)'}}>{formatDuration(aggregate.totalDurationMs)}</span></div>
-        <div><span style={{color: 'var(--text-dim)'}}>Est. Manual:</span> <span style={{color: 'var(--amber)'}}>{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
-        <div><span style={{color: 'var(--text-dim)'}}>Time Saved:</span> <span style={{color: 'var(--green)'}}>{formatDuration(aggregate.timeSavedMs)}</span></div>
+        <div><span className="rollup-label">Claude Time</span> <span className="rollup-value time">{formatDuration(aggregate.totalDurationMs)}</span></div>
+        <div><span className="rollup-label">Est. Manual</span> <span className="rollup-value cost">{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
+        <div><span className="rollup-label">Time Saved</span> <span className="rollup-value green">{formatDuration(aggregate.timeSavedMs)}</span></div>
       </div>
       {beads && beads.hasBeads && (
         <div className="rollup-section">
           <div className="rollup-title">Beads</div>
-          <div><span style={{color: 'var(--text-dim)'}}>Closed:</span> {beads.closed}</div>
-          <div><span style={{color: 'var(--text-dim)'}}>Created:</span> {beads.created}</div>
-          <div><span style={{color: 'var(--text-dim)'}}>$/bead:</span> <span style={{color: 'var(--amber)'}}>{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+          <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
+          <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
+          <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
         </div>
       )}
     </div>
