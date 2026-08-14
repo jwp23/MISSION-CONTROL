@@ -726,14 +726,43 @@ body {
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   padding: 8px 12px;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 20px;
   font-size: 13px;
   min-height: 60px;
 }
 
+@media (max-width: 1279px) {
+  .rollup {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .rollup-section {
-  flex: 1;
+  min-width: 0;
+}
+
+.rollup-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.rollup-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rollup-list::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+.rollup-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.rollup-list::-webkit-scrollbar-thumb:hover {
+  background: var(--border-active);
 }
 
 .rollup-title {

@@ -546,14 +546,9 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           MULTIPLIER <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
         {beads && beads.hasBeads && (
-          <>
-            <span className="stat-item" title="Beads closed/created in window">
-              BEADS <span className="stat-value">{beads.closed}/{beads.created}</span>
-            </span>
-            <span className="stat-item" title="$/Bead = totalCost / beads closed">
-              $/BEAD <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
-            </span>
-          </>
+          <span className="stat-item" title="$/Bead = spend ÷ beads closed for the current scope and window">
+            $/BEAD <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
+          </span>
         )}
       </div>
       <div className="top-bar-controls">
@@ -882,7 +877,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
   );
 }
 
-function Rollup({ aggregate }) {
+function Rollup({ aggregate, beads }) {
   if (!aggregate) return null;
 
   const models = Object.entries(aggregate.tokensByModel || {});
@@ -896,18 +891,20 @@ function Rollup({ aggregate }) {
     <div className="rollup">
       <div className="rollup-section">
         <div className="rollup-title">Tokens by Model</div>
-        {models.map(([model, tokens]) => {
-          const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
-          const pct = totalTokens > 0 ? (modelTotal / totalTokens * 100) : 0;
-          return (
-            <div className="model-bar" key={model}>
-              <div className="model-bar-fill" style={{ width: Math.max(pct, 1) + '%', maxWidth: '120px' }}></div>
-              <span className="model-bar-label">
-                {shortModel(model)}: {formatTokens(modelTotal)} ({pct.toFixed(0)}%) — {formatCost(tokens.cost)}
-              </span>
-            </div>
-          );
-        })}
+        <div className="rollup-list">
+          {models.map(([model, tokens]) => {
+            const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+            const pct = totalTokens > 0 ? (modelTotal / totalTokens * 100) : 0;
+            return (
+              <div className="model-bar" key={model}>
+                <div className="model-bar-fill" style={{ width: Math.max(pct, 1) + '%', maxWidth: '120px' }}></div>
+                <span className="model-bar-label">
+                  {shortModel(model)}: {formatTokens(modelTotal)} ({pct.toFixed(0)}%) — {formatCost(tokens.cost)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {aggregate.totalSubagentCount > 0 && (
         <div className="rollup-section">
@@ -915,15 +912,17 @@ function Rollup({ aggregate }) {
           <div className="subagent-summary">
             {aggregate.totalSubagentCount} subagent{aggregate.totalSubagentCount !== 1 ? 's' : ''} · {formatTokens(totalSubTokens)} tokens · {formatCost(totalSubCost)}
           </div>
-          {subModels.map(([model, tokens]) => {
-            const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
-            const count = subCountByModel[model] || 0;
-            return (
-              <div className="subagent-model-row" key={model}>
-                <span style={{color: 'var(--text-dim)'}}>{shortModel(model)}:</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · {formatCost(tokens.cost)}
-              </div>
-            );
-          })}
+          <div className="rollup-list">
+            {subModels.map(([model, tokens]) => {
+              const modelTotal = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+              const count = subCountByModel[model] || 0;
+              return (
+                <div className="subagent-model-row" key={model}>
+                  <span style={{color: 'var(--text-dim)'}}>{shortModel(model)}:</span> {count} subagent{count !== 1 ? 's' : ''} · {formatTokens(modelTotal)} · {formatCost(tokens.cost)}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       <div className="rollup-section">
@@ -940,6 +939,14 @@ function Rollup({ aggregate }) {
         <div><span style={{color: 'var(--text-dim)'}}>Est. Manual:</span> <span style={{color: 'var(--amber)'}}>{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
         <div><span style={{color: 'var(--text-dim)'}}>Time Saved:</span> <span style={{color: 'var(--green)'}}>{formatDuration(aggregate.timeSavedMs)}</span></div>
       </div>
+      {beads && beads.hasBeads && (
+        <div className="rollup-section">
+          <div className="rollup-title">Beads</div>
+          <div><span style={{color: 'var(--text-dim)'}}>Closed:</span> {beads.closed}</div>
+          <div><span style={{color: 'var(--text-dim)'}}>Created:</span> {beads.created}</div>
+          <div><span style={{color: 'var(--text-dim)'}}>$/bead:</span> <span style={{color: 'var(--amber)'}}>{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1219,7 +1226,7 @@ function App() {
               ) : (
                 <div className="empty-state">No sessions found</div>
               )}
-              <Rollup aggregate={currentProject.aggregate} />
+              <Rollup aggregate={currentProject.aggregate} beads={beadsStats} />
             </>
           ) : (
             <div className="empty-state">Select a project</div>
