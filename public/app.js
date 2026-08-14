@@ -52,14 +52,38 @@ function shortDate(dateStr) {
 
 // --- Chart Components ---
 
-function LineChart({ data, title }) {
-  const [tooltip, setTooltip] = useState(null);
+function useDragSelect(padL, plotW, count, onDone) {
+  const [drag, setDrag] = useState(null); // {x0, x1} in viewBox units
+  const toIdx = (x) => Math.max(0, Math.min(count - 1, Math.round(((x - padL) / plotW) * (count - 1))));
+  const vbX = (e) => {
+    const svg = e.currentTarget.closest('svg') || e.currentTarget;
+    const r = svg.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * 500; // viewBox width is 500 in all charts
+  };
+  return {
+    drag,
+    onMouseDown: (e) => setDrag({ x0: vbX(e), x1: vbX(e) }),
+    onMouseMove: (e) => drag && setDrag({ ...drag, x1: vbX(e) }),
+    onMouseUp: () => {
+      if (drag && Math.abs(drag.x1 - drag.x0) > 4 && count > 1) {
+        const [a, b] = [toIdx(Math.min(drag.x0, drag.x1)), toIdx(Math.max(drag.x0, drag.x1))];
+        if (a !== b) onDone(a, b);
+      }
+      setDrag(null);
+    },
+    onCancel: () => setDrag(null),
+  };
+}
 
-  if (!data || data.length === 0) return null;
+function LineChart({ data, title, onSelectRange }) {
+  const [tooltip, setTooltip] = useState(null);
 
   const W = 500, H = 100, padL = 56, padR = 10, padT = 5, padB = 20;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
+  const ds = useDragSelect(padL, plotW, data ? data.length : 0, (a, b) => onSelectRange(data[a].date, data[b].date));
+
+  if (!data || data.length === 0) return null;
 
   const maxTokens = Math.max(...data.map(d => d.tokens), 1);
   const maxCost = Math.max(...data.map(d => d.cost), 0.01);
@@ -95,7 +119,8 @@ function LineChart({ data, title }) {
         </span>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
-        onMouseLeave={() => setTooltip(null)}>
+        onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
+        onMouseLeave={() => { setTooltip(null); ds.onCancel(); }}>
         {/* Y-axis gridlines + labels */}
         {Array.from({length: yTicks + 1}, (_, i) => {
           const val = tokenStep * i;
@@ -139,6 +164,7 @@ function LineChart({ data, title }) {
             </text>
           ) : null
         ))}
+        {ds.drag && <rect x={Math.min(ds.drag.x0, ds.drag.x1)} y={padT} width={Math.abs(ds.drag.x1 - ds.drag.x0)} height={plotH} fill="var(--blue)" opacity="0.15" stroke="var(--blue)" strokeWidth="0.5" />}
       </svg>
       {tooltip && (
         <div className="chart-tooltip" style={{ left: tooltip.x + 10, top: tooltip.y - 30 }}>
@@ -155,8 +181,13 @@ const MODEL_COLORS = {
   haiku: '#00cc6a'
 };
 
-function ModelChart({ data, title }) {
+function ModelChart({ data, title, onSelectRange }) {
   const [tooltip, setTooltip] = useState(null);
+
+  const W = 500, H = 100, padL = 36, padR = 10, padT = 5, padB = 20;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const ds = useDragSelect(padL, plotW, data ? data.length : 0, (a, b) => onSelectRange(data[a].date, data[b].date));
 
   if (!data || data.length === 0) return null;
 
@@ -183,10 +214,6 @@ function ModelChart({ data, title }) {
     }
     return { ...d, pcts, total };
   });
-
-  const W = 500, H = 100, padL = 36, padR = 10, padT = 5, padB = 20;
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
 
   const xAt = (i) => padL + (processed.length === 1 ? plotW / 2 : (i / (processed.length - 1)) * plotW);
   const yAt = (pct) => padT + plotH - (pct / 100) * plotH;
@@ -230,7 +257,8 @@ function ModelChart({ data, title }) {
         </span>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
-        onMouseLeave={() => setTooltip(null)}>
+        onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
+        onMouseLeave={() => { setTooltip(null); ds.onCancel(); }}>
         {/* Y-axis gridlines */}
         {[0, 25, 50, 75, 100].map(pct => (
           <g key={pct}>
@@ -271,6 +299,7 @@ function ModelChart({ data, title }) {
             </text>
           ) : null
         ))}
+        {ds.drag && <rect x={Math.min(ds.drag.x0, ds.drag.x1)} y={padT} width={Math.abs(ds.drag.x1 - ds.drag.x0)} height={plotH} fill="var(--blue)" opacity="0.15" stroke="var(--blue)" strokeWidth="0.5" />}
       </svg>
       {tooltip && (
         <div className="chart-tooltip" style={{ left: tooltip.x + 10, top: tooltip.y - 30 }}>
@@ -281,14 +310,16 @@ function ModelChart({ data, title }) {
   );
 }
 
-function MonthlySpendChart({ data, title }) {
+function MonthlySpendChart({ data, title, onSelectRange }) {
   const [tooltip, setTooltip] = useState(null);
-
-  if (!data || data.length === 0) return null;
 
   const W = 500, H = 100, padL = 46, padR = 10, padT = 10, padB = 20;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
+  const lastDay = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`; };
+  const ds = useDragSelect(padL, plotW, data ? data.length : 0, (a, b) => onSelectRange(`${data[a].month}-01`, lastDay(data[b].month)));
+
+  if (!data || data.length === 0) return null;
 
   const maxCost = Math.max(...data.map(d => d.cost), 150); // At least 150 so $100 line is visible
   const yScale = (v) => padT + plotH - (v / maxCost) * plotH;
@@ -320,7 +351,8 @@ function MonthlySpendChart({ data, title }) {
         </span>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
-        onMouseLeave={() => setTooltip(null)}>
+        onMouseDown={ds.onMouseDown} onMouseMove={ds.onMouseMove} onMouseUp={ds.onMouseUp}
+        onMouseLeave={() => { setTooltip(null); ds.onCancel(); }}>
         {/* Y-axis gridlines + labels */}
         {yTicks.map(v => (
           <g key={v}>
@@ -368,6 +400,7 @@ function MonthlySpendChart({ data, title }) {
             {monthLabel(d.month)}
           </text>
         ))}
+        {ds.drag && <rect x={Math.min(ds.drag.x0, ds.drag.x1)} y={padT} width={Math.abs(ds.drag.x1 - ds.drag.x0)} height={plotH} fill="var(--blue)" opacity="0.15" stroke="var(--blue)" strokeWidth="0.5" />}
       </svg>
       {tooltip && (
         <div className="chart-tooltip" style={{ left: tooltip.x + 10, top: tooltip.y - 30 }}>
