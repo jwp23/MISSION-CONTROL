@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
 const EXAMPLE_PATH = path.join(__dirname, '..', 'config.example.json');
@@ -8,7 +8,7 @@ const EXAMPLE_PATH = path.join(__dirname, '..', 'config.example.json');
 let config = null;
 
 function expandHome(p) {
-  if (p && p.startsWith('~')) return path.join(os.homedir(), p.slice(1));
+  if (p?.startsWith('~')) return path.join(os.homedir(), p.slice(1));
   return p;
 }
 
@@ -41,7 +41,7 @@ function getPricing(model) {
   const matched = matchConfigPricing(cfg.pricing || {}, model);
   if (matched) return matched;
   // Fallback to Sonnet pricing
-  return (cfg.pricing && cfg.pricing['claude-sonnet-4-6']) || { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+  return cfg.pricing?.['claude-sonnet-4-6'] || { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
 }
 
 module.exports = { load, get, save, getPricing };

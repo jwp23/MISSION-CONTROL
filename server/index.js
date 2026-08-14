@@ -1,5 +1,5 @@
 const express = require('express');
-const path = require('path');
+const path = require('node:path');
 const config = require('./config');
 const scanner = require('./scanner');
 const parser = require('./parser');
@@ -9,6 +9,7 @@ const timerange = require('./timerange');
 const beads = require('./beads');
 
 const app = express();
+app.disable('x-powered-by');
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -191,9 +192,9 @@ app.get('/api/search', async (req, res) => {
 
     const results = [];
     for (const [, session] of scanner.sessionCache) {
-      if ((session.summary && session.summary.toLowerCase().includes(query)) ||
-          (session.sessionId && session.sessionId.toLowerCase().includes(query)) ||
-          (session.sessionName && session.sessionName.toLowerCase().includes(query))) {
+      if (session.summary?.toLowerCase().includes(query) ||
+          session.sessionId?.toLowerCase().includes(query) ||
+          session.sessionName?.toLowerCase().includes(query)) {
         results.push({
           sessionId: session.sessionId,
           sessionName: session.sessionName || null,
@@ -210,7 +211,7 @@ app.get('/api/search', async (req, res) => {
     for (const [sid, entry] of Object.entries(historyIndex)) {
       if (entry.display.toLowerCase().includes(query) || sid.toLowerCase().includes(query)) {
         // Avoid duplicates
-        if (!results.find(r => r.sessionId === sid)) {
+        if (!results.some(r => r.sessionId === sid)) {
           results.push({
             sessionId: sid,
             summary: entry.display,
