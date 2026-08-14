@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeLitellm, appendIfChanged, resolvePricing } = require('./pricing');
+const { normalizeLitellm, appendIfChanged, resolvePricing, matchConfigPricing } = require('./pricing');
 
 describe('normalizeLitellm', () => {
   it('converts anthropic claude entries to per-MTok and drops the rest', () => {
@@ -43,6 +43,24 @@ describe('resolvePricing', () => {
   it('unknown model returns null', () => {
     assert.equal(resolvePricing(h, 'gpt-4', Date.parse('2026-10-01')), null);
   });
+  it('NaN timestamp (unparseable date) uses latest entry, not the oldest', () => {
+    assert.equal(resolvePricing(h, 'claude-sonnet-5', Date.parse('not-a-date')).input, 3);
+  });
+});
+
+describe('matchConfigPricing', () => {
+  const table = {
+    'claude-sonnet-5': { input: 9, output: 9, cacheRead: 9, cacheWrite: 9 },
+  };
+  it('matches exact model id', () => {
+    assert.equal(matchConfigPricing(table, 'claude-sonnet-5'), table['claude-sonnet-5']);
+  });
+  it('matches by prefix for dated model ids', () => {
+    assert.equal(matchConfigPricing(table, 'claude-sonnet-5-20260601'), table['claude-sonnet-5']);
+  });
+  it('returns null when nothing matches', () => {
+    assert.equal(matchConfigPricing(table, 'claude-opus-5'), null);
+  });
 });
 
 describe('init and refresh', () => {
@@ -66,6 +84,16 @@ describe('init and refresh', () => {
   it('refresh failure resolves false and keeps history', async () => {
     const failFetch = async () => { throw new Error('offline'); };
     assert.equal(await refresh(failFetch), false);
+  });
+  it('re-seeds and does not throw when the history file is corrupt', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pricing-corrupt-'));
+    const seedPath = path.join(dir, 'seed.json');
+    const historyPath = path.join(dir, 'history.json');
+    fs.writeFileSync(seedPath, JSON.stringify({ entries: [{ effectiveFrom: '2025-01-01', prices: { 'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } } }] }));
+    fs.writeFileSync(historyPath, '{not valid json');
+    assert.doesNotThrow(() => init({ historyPath, seedPath }));
+    assert.equal(getHistory().entries.length, 1);
+    assert.equal(JSON.parse(fs.readFileSync(historyPath, 'utf-8')).entries.length, 1);
   });
   it('refresh resolves false instead of throwing when pre-init', async () => {
     _resetForTesting();
@@ -99,5 +127,44 @@ describe('getPricing with lazy init', () => {
       // Reset module state
       _resetForTesting();
     }
+  });
+});
+
+describe('getPricing with config override', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { getPricing, init, _resetForTesting, _setConfigForTest } = require('./pricing');
+
+  const setup = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pricing-override-'));
+    const seedPath = path.join(dir, 'seed.json');
+    const historyPath = path.join(dir, 'history.json');
+    fs.writeFileSync(seedPath, JSON.stringify({ entries: [{ effectiveFrom: '2025-01-01', prices: {
+      'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+    } }] }));
+    _resetForTesting();
+    init({ historyPath, seedPath });
+  };
+
+  it('exact match in the override table wins over history', () => {
+    setup();
+    _setConfigForTest({ pricing: { 'claude-opus-5': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } } });
+    assert.deepEqual(getPricing('claude-opus-5', null), { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 });
+    _resetForTesting();
+  });
+
+  it('prefix match in the override table wins over history', () => {
+    setup();
+    _setConfigForTest({ pricing: { 'claude-opus-5': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } } });
+    assert.deepEqual(getPricing('claude-opus-5-20260601', null), { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 });
+    _resetForTesting();
+  });
+
+  it('falls through to history when the model is not in the override table', () => {
+    setup();
+    _setConfigForTest({ pricing: { 'claude-sonnet-5': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } } });
+    assert.deepEqual(getPricing('claude-opus-5', null), { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 });
+    _resetForTesting();
   });
 });

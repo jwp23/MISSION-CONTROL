@@ -97,7 +97,7 @@ Each session file is a sequence of JSON lines containing user messages, assistan
 
 MISSION-CONTROL fetches Claude API pricing from LiteLLM's community JSON at startup and refreshes it every 24 hours while running. Prices are stored as dated entries in `pricing-history.json` (gitignored, seeded with a baseline on first run). This ensures historical sessions retain the pricing in effect on their date, rather than being repriced at current rates. The app is offline-safe — if LiteLLM is unreachable, it falls back to the last known historical pricing.
 
-The `pricing` key in `config.json` acts as a manual override for any model, useful when you need to test specific rates or apply custom adjustments.
+The `pricing` key in `config.json` acts as a manual override for any model, useful when you need to test specific rates or apply custom adjustments. If you're upgrading and already have a `pricing` block in your `config.json`, it will override fetched pricing entirely — delete it unless you intend a manual override.
 
 ### Time Saved Estimation
 

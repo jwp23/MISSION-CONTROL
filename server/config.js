@@ -38,10 +38,10 @@ function getPricing(model) {
   const cfg = get();
   const { matchConfigPricing } = require('./pricing');
   // Try exact match first, then prefix match
-  const matched = matchConfigPricing(cfg.pricing, model);
+  const matched = matchConfigPricing(cfg.pricing || {}, model);
   if (matched) return matched;
   // Fallback to Sonnet pricing
-  return cfg.pricing['claude-sonnet-4-6'] || { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+  return (cfg.pricing && cfg.pricing['claude-sonnet-4-6']) || { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
 }
 
 module.exports = { load, get, save, getPricing };

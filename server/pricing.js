@@ -50,7 +50,7 @@ function resolvePricing(history, model, timestampMs) {
   const entries = history.entries;
   if (!entries.length) return null;
   let entry = entries[entries.length - 1];
-  if (timestampMs != null) {
+  if (Number.isFinite(timestampMs)) {
     for (let i = entries.length - 1; i >= 0; i--) {
       if (Date.parse(entries[i].effectiveFrom) <= timestampMs) { entry = entries[i]; break; }
       if (i === 0) entry = entries[0];
@@ -77,17 +77,32 @@ function ensureHistory() {
   }
 }
 
+function writeHistoryAtomic(historyPath, history) {
+  const tmpPath = `${historyPath}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(history, null, 2));
+  fs.renameSync(tmpPath, historyPath);
+}
+
+function seedHistory(historyPath, seedPath) {
+  const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+  moduleHistory = seed;
+  writeHistoryAtomic(historyPath, seed);
+  return moduleHistory;
+}
+
 function init(opts = {}) {
   moduleHistoryPath = opts.historyPath || path.join(__dirname, '..', 'pricing-history.json');
   const seedPath = opts.seedPath || path.join(__dirname, 'pricing-seed.json');
 
   if (fs.existsSync(moduleHistoryPath)) {
-    moduleHistory = JSON.parse(fs.readFileSync(moduleHistoryPath, 'utf-8'));
+    try {
+      moduleHistory = JSON.parse(fs.readFileSync(moduleHistoryPath, 'utf-8'));
+    } catch {
+      console.log('pricing: history corrupt, re-seeded');
+      seedHistory(moduleHistoryPath, seedPath);
+    }
   } else {
-    // Copy seed to history
-    const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
-    moduleHistory = seed;
-    fs.writeFileSync(moduleHistoryPath, JSON.stringify(seed, null, 2));
+    seedHistory(moduleHistoryPath, seedPath);
   }
 
   return moduleHistory;
@@ -109,7 +124,7 @@ async function refresh(fetchFn = global.fetch) {
     const today = new Date().toISOString().slice(0, 10);
     const changed = appendIfChanged(moduleHistory, normalized, today);
     if (changed) {
-      fs.writeFileSync(moduleHistoryPath, JSON.stringify(moduleHistory, null, 2));
+      writeHistoryAtomic(moduleHistoryPath, moduleHistory);
     }
     return changed;
   } catch (err) {
@@ -126,6 +141,7 @@ function startAutoRefresh(intervalMs = 24 * 60 * 60 * 1000) {
 function _resetForTesting() {
   moduleHistory = null;
   moduleHistoryPath = null;
+  testConfig = null;
 }
 
 let testConfig = null;
@@ -143,6 +159,7 @@ function getPricing(model, timestampMs) {
   const history = ensureHistory();
   const resolved = resolvePricing(history, model, timestampMs);
   if (resolved) return resolved;
+  console.warn(`pricing: no rate for model "${model}", falling back to sonnet/$0`);
   const latest = history.entries[history.entries.length - 1];
   return (latest && latest.prices['claude-sonnet-5']) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
