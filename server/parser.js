@@ -33,9 +33,11 @@ function updateTimestamps(entry, session) {
  * Extract session name (last one wins — renamed sessions have multiple)
  */
 function extractSessionName(entry, current) {
-  if (entry.type === 'custom-title' && entry.customTitle) return entry.customTitle;
-  if (entry.type === 'agent-name' && entry.agentName) return entry.agentName;
-  return current;
+  const raw = (entry.type === 'custom-title' && entry.customTitle)
+    || (entry.type === 'agent-name' && entry.agentName);
+  if (!raw) return current;
+  // A name made only of styling codes leaves nothing to display — keep the previous one
+  return stripAnsi(raw).trim() || current;
 }
 
 /**
@@ -48,6 +50,14 @@ function extractUserText(content) {
     if (textPart) return textPart.text;
   }
   return '';
+}
+
+/**
+ * Remove ANSI SGR/CSI escape sequences left behind by terminal styling
+ */
+function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 }
 
 /**
@@ -69,6 +79,8 @@ function collectUserMessage(entry, userMessages) {
   if (userMessages.length >= 5 || !entry.message) return;
   let text = extractUserText(entry.message.content);
   if (!text || entry.isMeta || text.length <= 5) return;
+  // Strip ANSI escape sequences — terminal styling captured from pasted output
+  text = stripAnsi(text);
   // Strip XML/HTML tags. (?=([^>]+))\1 emulates an atomic group so the
   // engine never re-tries shorter matches (avoids super-linear backtracking).
   text = text.replace(/<(?=([^>]+))\1>/g, '').trim();
