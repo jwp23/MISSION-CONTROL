@@ -33,9 +33,11 @@ function updateTimestamps(entry, session) {
  * Extract session name (last one wins — renamed sessions have multiple)
  */
 function extractSessionName(entry, current) {
-  if (entry.type === 'custom-title' && entry.customTitle) return entry.customTitle;
-  if (entry.type === 'agent-name' && entry.agentName) return entry.agentName;
-  return current;
+  const raw = (entry.type === 'custom-title' && entry.customTitle)
+    || (entry.type === 'agent-name' && entry.agentName);
+  if (!raw) return current;
+  // A name made only of styling codes leaves nothing to display — keep the previous one
+  return stripAnsi(raw).trim() || current;
 }
 
 /**
