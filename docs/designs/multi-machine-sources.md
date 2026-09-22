@@ -126,7 +126,7 @@ shim for the old parameter.
   numerator from `/api/stats?machine=<beads.machine>`. With machines present
   but `beads.machine` null, renders `—`. Single-source: unchanged.
 
-No new CSS beyond the column width.
+New CSS: the Machine column width and the `.machine-select` picker styling.
 
 ## Single-machine behaviour
 
