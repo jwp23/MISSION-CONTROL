@@ -6,7 +6,7 @@ Built for anyone using [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 
 ## What It Does
 
-- **Discovers projects automatically** by scanning a directory for Claude Code projects (anything with a `.claude/` folder)
+- **Discovers projects automatically** from Claude Code's own session transcripts -- no directory to configure
 - **Parses session data** from Claude Code's JSONL files to extract token counts, costs, models used, tools called, and auto-generated summaries
 - **Calculates costs** per session using pricing fetched from LiteLLM at startup and refreshed daily
 - **Estimates time saved** based on a configurable multiplier (e.g., "this would have taken 8x longer without Claude")
