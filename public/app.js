@@ -567,7 +567,7 @@ function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
 // because bead counts come from the local checkout.
 function beadCost({ beads, spend, localSpend, machines }) {
   if (!beads?.hasBeads || beads.closed <= 0) return '—';
-  if (!beads.machine) return typeof spend === 'number' ? formatCost(spend / beads.closed) : '—';
+  if (!beads.machine) return machines.length > 0 || typeof spend !== 'number' ? '—' : formatCost(spend / beads.closed);
   const known = machines.some(m => m.machine === beads.machine);
   if (!known || typeof localSpend !== 'number') return '—';
   return formatCost(localSpend / beads.closed);
