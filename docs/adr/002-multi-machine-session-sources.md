@@ -44,8 +44,8 @@ Projects are derived from transcripts, not from walking `scanPath`. A
 session's project key is its launch `cwd` made home-relative, with a trailing
 `/.worktrees/<name>` or `/.claude/worktrees/<name>` stripped. A `cwd` outside
 home maps to the synthetic key `(temp)`. Every session counts; subdirectory
-launches remain their own project. `scanPath` survives only to map a project
-key to a local checkout for beads and restore.
+launches remain their own project. `localPath` is `~/<key>` when it exists on
+this machine; `scanPath` is removed from the config, a breaking change.
 
 The API gains a `machine` filter beside `project`, and a per-machine
 aggregate. Everything downstream — parser, subagent merge, cost, time range,

@@ -30,7 +30,7 @@ Data freshness equals the last agent-downlink run. Live-only concerns
 
 ## Sources (`server/sources.js`)
 
-`resolveSources()` returns `[{ machine, projectsDir }]`.
+`resolveSources()` returns `{ sources: [{ machine, projectsDir }], localMachine }`.
 
 1. If `~/.config/agent-downlink/config.toml` exists, parse it with
    `smol-toml`. Read `mirror` and `machine`; both must be strings.
@@ -42,9 +42,9 @@ Data freshness equals the last agent-downlink run. Live-only concerns
 
 Fallback and no-downlink: `[{ machine: null, projectsDir: ~/.claude/projects }]`.
 
-`localMachine()` returns the config's `machine` when the mirror is in use,
-otherwise `null`. It is computed per `/api/projects` request, like discovery
-today, so a newly mirrored machine appears without a restart.
+`localMachine` is the config's `machine` when the mirror is in use, otherwise
+`null`. Resolution runs per `/api/projects` request, like discovery today, so
+a newly mirrored machine appears without a restart.
 
 `historyIndex` becomes `Map<machine, index>`, built once per source at boot
 from `<source root>/history.jsonl` when present. The mirror currently lacks
@@ -83,8 +83,9 @@ Home is detected by the `/home/<user>/` and `/Users/<user>/` prefixes, not
 `os.homedir()`, because the other machine's home differs. `projectName` is the
 key's last segment; when two keys share a basename the full key is shown.
 
-`scanPath` no longer decides what is counted. It maps a project key to a local
-checkout (`localPath`) for beads and restore and is otherwise optional.
+`localPath(key)` is `~/<key>` when that directory exists on this machine; beads
+and restore need it. `scanPath` is removed from `config.json` (a breaking
+config change); a leftover key is ignored.
 
 ## API (`server/index.js`)
 
@@ -133,7 +134,8 @@ No new CSS beyond the column width.
 never sent. Every session has `machine: null`; `$/bead` uses total spend with
 no label change; LAUNCH shows on every row with a `localPath`. Totals rise on
 upgrade because worktree sessions and sessions outside `scanPath` now count,
-and a checkout with no sessions no longer appears in the sidebar.
+a checkout with no sessions no longer appears in the sidebar, and `scanPath`
+is removed from the config.
 
 ## Error handling
 
