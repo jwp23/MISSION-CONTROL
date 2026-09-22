@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const os = require('node:os');
-const path = require('node:path');
+const { resolveWithin } = require('./paths');
 
 const TEMP_KEY = '(temp)';
 // Home directories on the machines we aggregate: Linux and macOS layouts
@@ -37,8 +37,8 @@ function displayNames(keys) {
  */
 function localPath(key, homeDir = os.homedir()) {
   if (key === TEMP_KEY) return null;
-  const abs = key === '~' ? homeDir : path.join(homeDir, key);
-  return fs.existsSync(abs) ? abs : null;
+  const abs = resolveWithin(homeDir, key === '~' ? '.' : key);
+  return abs && fs.existsSync(abs) ? abs : null;
 }
 
 module.exports = { projectKey, displayNames, localPath, TEMP_KEY };

@@ -48,4 +48,7 @@ describe('localPath', () => {
   it('returns home for ~', () => assert.equal(localPath('~', home), home));
   it('returns null when the directory is absent', () => assert.equal(localPath('workspace/missing', home), null));
   it('returns null for the temp bucket', () => assert.equal(localPath(TEMP_KEY, home), null));
+  it('returns null when the key escapes home', () => assert.equal(localPath('../../etc', home), null));
+  it('resolves a key with internal .. back into home', () =>
+    assert.equal(localPath('workspace/app/../app', home), path.join(home, 'workspace', 'app')));
 });

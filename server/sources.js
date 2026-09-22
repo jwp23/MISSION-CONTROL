@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { parse } = require('smol-toml');
 const config = require('./config');
-const { resolveWithin } = require('./scanner');
+const { resolveWithin } = require('./paths');
 
 const DOWNLINK_CONFIG = path.join(os.homedir(), '.config', 'agent-downlink', 'config.toml');
 

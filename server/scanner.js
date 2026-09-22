@@ -3,6 +3,7 @@ const path = require('node:path');
 const config = require('./config');
 const parser = require('./parser');
 const { projectKey, displayNames } = require('./project-key');
+const { resolveWithin } = require('./paths');
 
 /**
  * Encode a project path to match Claude Code's directory naming
@@ -10,18 +11,6 @@ const { projectKey, displayNames } = require('./project-key');
  */
 function encodeProjectPath(projectPath) {
   return projectPath.replaceAll('/', '-');
-}
-
-/**
- * Resolve a path and reject it unless it stays within baseDir.
- * Guards filesystem access against traversal from user-controlled input.
- * Returns the resolved absolute path, or null if it escapes the base.
- */
-function resolveWithin(baseDir, candidate) {
-  const base = path.resolve(baseDir);
-  const resolved = path.resolve(base, candidate);
-  if (resolved !== base && !resolved.startsWith(base + path.sep)) return null;
-  return resolved;
 }
 
 /**
