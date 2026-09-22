@@ -419,6 +419,7 @@ function aggregateSessions(sessions) {
 }
 
 module.exports = {
+  resolveWithin,
   encodeProjectPath,
   discoverProjects,
   listSessionFiles,
