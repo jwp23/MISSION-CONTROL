@@ -1,8 +1,8 @@
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const config = require('./config');
 const parser = require('./parser');
+const { projectKey, displayNames } = require('./project-key');
 
 /**
  * Encode a project path to match Claude Code's directory naming
@@ -25,54 +25,14 @@ function resolveWithin(baseDir, candidate) {
 }
 
 /**
- * Scan the configured root folder for Claude Code projects
- * A project is any directory that has a .claude/ subdirectory
- */
-function discoverProjects() {
-  const cfg = config.get();
-  // scanPath is user-configurable; contain it within the home directory
-  const scanPath = resolveWithin(os.homedir(), cfg.scanPath);
-  const claudeDir = cfg.claudeDir;
-
-  if (!scanPath || !fs.existsSync(scanPath)) return [];
-
-  const entries = fs.readdirSync(scanPath, { withFileTypes: true });
-  const projects = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    // Skip hidden dirs, trash, etc.
-    if (entry.name.startsWith('.') || entry.name.startsWith('trash')) continue;
-
-    const projectPath = path.join(scanPath, entry.name);
-    const claudeSubdir = path.join(projectPath, '.claude');
-
-    if (fs.existsSync(claudeSubdir)) {
-      const encodedPath = encodeProjectPath(projectPath);
-      const sessionsDir = path.join(claudeDir, 'projects', encodedPath);
-
-      projects.push({
-        name: entry.name,
-        path: projectPath,
-        encodedPath,
-        sessionsDir,
-        hasSessionData: fs.existsSync(sessionsDir)
-      });
-    }
-  }
-
-  return projects.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
  * List session JSONL files for a project.
  * Discovers both top-level session files and subagent files in
  * {uuid}/subagents/*.jsonl, linking subagents to their parent session.
  */
-function listSessionFiles(sessionsDir) {
+function listSessionFiles(sessionsDir, projectsDir = path.join(config.get().claudeDir, 'projects')) {
   // sessionsDir may be built from a user-supplied encoded path;
-  // contain it within the Claude projects dir
-  const safeDir = resolveWithin(path.join(config.get().claudeDir, 'projects'), sessionsDir);
+  // contain it within the source's projects dir
+  const safeDir = resolveWithin(projectsDir, sessionsDir);
   if (!safeDir || !fs.existsSync(safeDir)) return [];
 
   const entries = fs.readdirSync(safeDir);
@@ -277,7 +237,7 @@ function applyHistorySummary(parsed, historyIndex) {
  * Subagent files are merged into their parent session's metrics.
  */
 async function getProjectSessions(project, historyIndex) {
-  const files = listSessionFiles(project.sessionsDir);
+  const files = listSessionFiles(project.sessionsDir, project.projectsDir);
   const parentFiles = files.filter(f => !f.parentSessionId);
   const subagentsByParent = groupSubagentsByParent(files.filter(f => f.parentSessionId));
 
@@ -287,7 +247,7 @@ async function getProjectSessions(project, historyIndex) {
     const subFiles = subagentsByParent[file.id] || [];
     // Cache key includes parent + all subagent mtimes for invalidation
     const subMtimes = subFiles.map(sf => sf.modified.getTime()).sort().join(',');
-    const cacheKey = `${file.filePath}:${file.modified.getTime()}:${subMtimes}`;
+    const cacheKey = `${project.machine ?? ''}:${file.filePath}:${file.modified.getTime()}:${subMtimes}`;
     if (sessionCache.has(cacheKey)) {
       sessions.push(sessionCache.get(cacheKey));
       continue;
@@ -302,9 +262,9 @@ async function getProjectSessions(project, historyIndex) {
       computePrimaryModel(parsed);
 
       applyHistorySummary(parsed, historyIndex);
+      parsed.machine = project.machine ?? null;
+      parsed.projectKey = projectKey(parsed.cwd);
       parsed.encodedPath = project.encodedPath;
-      parsed.projectName = project.name;
-      parsed.projectPath = project.path;
       parsed.fileSize = file.size;
       parsed.modified = file.modified;
       sessionCache.set(cacheKey, parsed);
@@ -314,6 +274,31 @@ async function getProjectSessions(project, historyIndex) {
     }
   }
 
+  return sessions;
+}
+
+/**
+ * Parse every session from every source. Sessions carry their machine and
+ * cross-machine projectKey; projectName is chosen so collisions stay distinct.
+ */
+async function discoverSessions(sources, historyIndexes) {
+  const sessions = [];
+  for (const source of sources) {
+    if (!fs.existsSync(source.projectsDir)) continue;
+    const historyIndex = historyIndexes.get(source.machine) || {};
+    for (const entry of fs.readdirSync(source.projectsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const project = {
+        machine: source.machine,
+        projectsDir: source.projectsDir,
+        encodedPath: entry.name,
+        sessionsDir: path.join(source.projectsDir, entry.name)
+      };
+      sessions.push(...await getProjectSessions(project, historyIndex));
+    }
+  }
+  const names = displayNames(new Set(sessions.map(s => s.projectKey)));
+  for (const s of sessions) s.projectName = names.get(s.projectKey);
   return sessions;
 }
 
@@ -421,10 +406,10 @@ function aggregateSessions(sessions) {
 module.exports = {
   resolveWithin,
   encodeProjectPath,
-  discoverProjects,
   listSessionFiles,
   getActiveSessions,
   getProjectSessions,
+  discoverSessions,
   dedupeBySessionId,
   aggregateSessions,
   sessionCache
