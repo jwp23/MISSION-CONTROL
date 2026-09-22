@@ -565,7 +565,7 @@ function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
 
 // --- Components ---
 
-function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads }) {
+function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine }) {
   return (
     <div className="top-bar">
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
@@ -602,6 +602,12 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           <button type="button" className="timerange-chip" onClick={onClearRange}>
             {timeRange.from} → {timeRange.to} ✕
           </button>
+        )}
+        {machines.length > 0 && (
+          <select className="machine-select" value={selectedMachine || ''} onChange={(e) => onSelectMachine(e.target.value || null)} title="Scope the dashboard to one machine">
+            <option value="">All machines</option>
+            {machines.map(m => <option key={m.machine} value={m.machine}>{m.machine}</option>)}
+          </select>
         )}
         <button
           type="button"
@@ -818,6 +824,10 @@ const COLUMNS = [
     )
   },
   {
+    key: 'machine', label: 'Machine', className: 'col-machine', prio: 3, sortField: 'machine',
+    render: (s) => s.machine || ''
+  },
+  {
     key: 'summary', label: 'Summary / Session Name', className: 'col-summary', prio: 1, sortField: 'summary',
     render: (s, ctx) => <EditableSummary sessionId={s.sessionId} sessionName={s.sessionName} summary={s.summary} onSave={ctx.onSummaryEdit} />
   },
@@ -847,7 +857,7 @@ const COLUMNS = [
   }
 ];
 
-function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, onSummaryEdit, showProject, onSelectProject, localMachine, localPathFor }) {
+function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, onSummaryEdit, showProject, showMachine, onSelectProject, localMachine, localPathFor }) {
   const [restoring, setRestoring] = useState(null);
   const [restoreMsg, setRestoreMsg] = useState(null);
   const [copied, setCopied] = useState(null);
@@ -905,7 +915,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, on
     return sortDir === 'asc' ? ' ▲' : ' ▼';
   };
 
-  const columns = COLUMNS.filter(c => c.key !== 'project' || showProject);
+  const columns = COLUMNS.filter(c => (c.key !== 'project' || showProject) && (c.key !== 'machine' || showMachine));
 
   const ctx = {
     onStatusChange, onSummaryEdit, onSelectProject,
@@ -946,7 +956,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, on
   );
 }
 
-function Rollup({ aggregate, beads }) {
+function Rollup({ aggregate, beads, machines }) {
   const [collapsed, setCollapsed] = useState(() => {
     const stored = localStorage.getItem('rollupCollapsed');
     if (stored !== null) return stored === 'true';
@@ -1052,6 +1062,17 @@ function Rollup({ aggregate, beads }) {
           <div><span className="rollup-label">Est. Manual</span> <span className="rollup-value cost">{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
           <div><span className="rollup-label">Time Saved</span> <span className="rollup-value green">{formatDuration(aggregate.timeSavedMs)}</span></div>
         </div>
+        {machines.length > 0 && (
+          <div className="rollup-section">
+            <div className="rollup-title">By Machine</div>
+            {machines.map(m => (
+              <div key={m.machine}>
+                <span className="rollup-label">{m.machine}</span>{' '}
+                <span className="rollup-value">{m.sessionCount} sess</span> · {formatTokens(m.aggregate.totalInputTokens + m.aggregate.totalOutputTokens + m.aggregate.totalCacheReadTokens + m.aggregate.totalCacheWriteTokens)} · {m.aggregate.totalSubagentCount} subs · <span className="rollup-value cost">{formatCost(m.aggregate.totalCost)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       )}
     </>
@@ -1303,7 +1324,7 @@ function App() {
   const tableProps = {
     sortField, sortDir, onSort: handleSort,
     onStatusChange: handleStatusChange, onSummaryEdit: handleSummaryEdit,
-    localMachine,
+    localMachine, showMachine: machines.length > 0,
   };
 
   let content;
@@ -1314,7 +1335,7 @@ function App() {
           totalCost={stats.totalCost} totalDurationMs={stats.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
           tableProps={{ ...tableProps, showProject: true, onSelectProject: setSelectedProject, localPathFor: (s) => localPaths[s.projectKey] }} />
-        <Rollup aggregate={stats} beads={beadsStats} />
+        <Rollup aggregate={stats} beads={beadsStats} machines={machines} />
       </>
     );
   } else if (currentProject) {
@@ -1329,7 +1350,7 @@ function App() {
           totalCost={agg?.totalCost} totalDurationMs={agg?.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
           tableProps={{ ...tableProps, localPathFor: () => currentProject.localPath }} />
-        <Rollup aggregate={agg} beads={beadsStats} />
+        <Rollup aggregate={agg} beads={beadsStats} machines={machines} />
       </>
     );
   } else {
@@ -1340,7 +1361,8 @@ function App() {
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
-        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads} />
+        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads}
+        machines={machines} selectedMachine={selectedMachine} onSelectMachine={(m) => { setSearchResults(null); setSelectedMachine(m); }} />
       <div className="main-layout">
         <Sidebar
           projects={projects}
