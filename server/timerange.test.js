@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseRange, inRange, filterSessions, filterByProject } = require('./timerange');
+const { parseRange, inRange, filterSessions, filterByProject, filterByMachine } = require('./timerange');
 
 describe('parseRange', () => {
   it('parses from/to as UTC day bounds', () => {
@@ -39,28 +39,34 @@ describe('filterSessions', () => {
 
 describe('filterByProject', () => {
   const sessions = [
-    { encodedPath: '-home-a', firstTimestamp: 1 },
-    { encodedPath: '-home-b', firstTimestamp: 2 },
-    { encodedPath: '-home-a', firstTimestamp: 3 }
+    { projectKey: '-home-a', firstTimestamp: 1 },
+    { projectKey: '-home-b', firstTimestamp: 2 },
+    { projectKey: '-home-a', firstTimestamp: 3 }
   ];
-  it('keeps only sessions matching the encodedPath', () => {
+  it('keeps only sessions matching the projectKey', () => {
     const filtered = filterByProject(sessions, '-home-a');
     assert.equal(filtered.length, 2);
-    assert.ok(filtered.every((s) => s.encodedPath === '-home-a'));
+    assert.ok(filtered.every((s) => s.projectKey === '-home-a'));
   });
-  it('returns the same array unchanged when encodedPath is falsy', () => {
+  it('returns the same array unchanged when projectKey is falsy', () => {
     assert.equal(filterByProject(sessions, undefined), sessions);
     assert.equal(filterByProject(sessions, ''), sessions);
   });
   it('composes with filterSessions (project filter applied first)', () => {
     const withDates = [
-      { encodedPath: '-home-a', firstTimestamp: Date.parse('2026-03-01T00:00:00Z') },
-      { encodedPath: '-home-a', firstTimestamp: Date.parse('2026-08-01T00:00:00Z') },
-      { encodedPath: '-home-b', firstTimestamp: Date.parse('2026-08-01T00:00:00Z') }
+      { projectKey: '-home-a', firstTimestamp: Date.parse('2026-03-01T00:00:00Z') },
+      { projectKey: '-home-a', firstTimestamp: Date.parse('2026-08-01T00:00:00Z') },
+      { projectKey: '-home-b', firstTimestamp: Date.parse('2026-08-01T00:00:00Z') }
     ];
     const range = parseRange({ from: '2026-08-01', to: '2026-08-31' });
     const result = filterSessions(filterByProject(withDates, '-home-a'), range);
     assert.equal(result.length, 1);
-    assert.equal(result[0].encodedPath, '-home-a');
+    assert.equal(result[0].projectKey, '-home-a');
   });
+});
+
+describe('filterByMachine', () => {
+  const sessions = [{ machine: 'a' }, { machine: 'b' }, { machine: null }];
+  it('passes through with no machine', () => assert.equal(filterByMachine(sessions, undefined).length, 3));
+  it('filters by machine', () => assert.deepEqual(filterByMachine(sessions, 'a'), [{ machine: 'a' }]));
 });

@@ -30,8 +30,12 @@ function filterSessions(sessions, range) {
   if (range.from === null && range.to === null) return sessions;
   return sessions.filter((s) => inRange(s.firstTimestamp, range));
 }
-function filterByProject(sessions, encodedPath) {
-  if (!encodedPath) return sessions;
-  return sessions.filter((s) => s.encodedPath === encodedPath);
+function filterByProject(sessions, projectKey) {
+  if (!projectKey) return sessions;
+  return sessions.filter((s) => s.projectKey === projectKey);
 }
-module.exports = { toMs, parseRange, inRange, filterSessions, filterByProject };
+function filterByMachine(sessions, machine) {
+  if (!machine) return sessions;
+  return sessions.filter((s) => s.machine === machine);
+}
+module.exports = { toMs, parseRange, inRange, filterSessions, filterByProject, filterByMachine };
