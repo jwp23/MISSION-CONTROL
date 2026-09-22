@@ -137,15 +137,7 @@ app.get('/api/search', async (req, res) => {
       if (session.summary?.toLowerCase().includes(query) ||
           session.sessionId?.toLowerCase().includes(query) ||
           session.sessionName?.toLowerCase().includes(query)) {
-        results.push({
-          sessionId: session.sessionId,
-          sessionName: session.sessionName || null,
-          summary: session.summary,
-          primaryModel: session.primaryModel,
-          firstTimestamp: session.firstTimestamp,
-          totalCost: session.metrics.totalCost,
-          durationMs: session.metrics.totalDurationMs
-        });
+        results.push(sessionRow(session));
       }
     }
 
