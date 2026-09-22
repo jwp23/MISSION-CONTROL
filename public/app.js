@@ -563,9 +563,20 @@ function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
   );
 }
 
+// $/bead: spend ÷ beads closed. With a machine dimension, spend is this machine's only,
+// because bead counts come from the local checkout.
+function beadCost({ beads, spend, localSpend, machines }) {
+  if (!beads?.hasBeads || beads.closed <= 0) return '—';
+  if (!beads.machine) return machines.length > 0 || typeof spend !== 'number' ? '—' : formatCost(spend / beads.closed);
+  const known = machines.some(m => m.machine === beads.machine);
+  if (!known || typeof localSpend !== 'number') return '—';
+  return formatCost(localSpend / beads.closed);
+}
+function beadLabel(beads) { return beads?.machine ? '$/Bead (this machine)' : '$/Bead'; }
+
 // --- Components ---
 
-function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads }) {
+function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine, localSpend }) {
   return (
     <div className="top-bar">
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
@@ -591,9 +602,9 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
         {beads?.hasBeads && (
-          <span className="stat-item money" title="$/Bead = spend ÷ beads closed for the current scope and window">
-            <span className="stat-label">$/Bead</span>
-            <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
+          <span className="stat-item money" title={beads.machine ? 'Spend on this machine ÷ beads closed in the local checkout' : '$/Bead = spend ÷ beads closed for the current scope and window'}>
+            <span className="stat-label">{beadLabel(beads)}</span>
+            <span className="stat-value cost">{beadCost({ beads, spend: stats.totalCost, localSpend: localSpend, machines })}</span>
           </span>
         )}
       </div>
@@ -602,6 +613,12 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           <button type="button" className="timerange-chip" onClick={onClearRange}>
             {timeRange.from} → {timeRange.to} ✕
           </button>
+        )}
+        {machines.length > 0 && (
+          <select className="machine-select" value={selectedMachine || ''} onChange={(e) => onSelectMachine(e.target.value || null)} title="Scope the dashboard to one machine">
+            <option value="">All machines</option>
+            {machines.map(m => <option key={m.machine} value={m.machine}>{m.machine}</option>)}
+          </select>
         )}
         <button
           type="button"
@@ -641,15 +658,15 @@ function Sidebar({ projects, selectedProject, onSelect, activeSessions, wipCount
       <div className="sidebar-divider"></div>
       {projects.map(p => {
         let dotClass = '';
-        if (activeProjects.has(p.path)) dotClass = 'active';
+        if (activeProjects.has(p.localPath)) dotClass = 'active';
         else if (p.sessionCount > 0) dotClass = 'has-sessions';
-        const wip = wipCounts[p.encodedPath] || 0;
+        const wip = wipCounts[p.key] || 0;
 
         return (
           <div
-            key={p.encodedPath}
-            className={`project-item ${selectedProject === p.encodedPath ? 'active' : ''}`}
-            {...clickableProps(() => onSelect(p.encodedPath))}
+            key={p.key}
+            className={`project-item ${selectedProject === p.key ? 'active' : ''}`}
+            {...clickableProps(() => onSelect(p.key))}
           >
             <span className={`project-dot ${dotClass}`}></span>
             <span className="project-name">{p.name}</span>
@@ -796,10 +813,13 @@ const COLUMNS = [
           >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
         }
 
+        const localPath = ctx.localPathFor(s);
+        const isLocal = s.machine === null || s.machine === ctx.localMachine;
+        if (!isLocal || !localPath) return null;
         return <button
           type="button"
           className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
-          onClick={(e) => { e.stopPropagation(); ctx.handleRestore(s.sessionId, s.projectPath); }}
+          onClick={(e) => { e.stopPropagation(); ctx.handleRestore(s.sessionId, localPath); }}
           title={`Resume session\n${s.sessionId}`}
           disabled={isRestoring}
         >{isRestoring ? '...' : 'Launch'}</button>;
@@ -809,10 +829,14 @@ const COLUMNS = [
   {
     key: 'project', label: 'Project', className: 'col-project', prio: 1, sortField: 'projectName',
     render: (s, ctx) => (
-      <span className="project-link" {...clickableProps((e) => { e.stopPropagation(); ctx.onSelectProject?.(s.encodedPath); })}>
+      <span className="project-link" {...clickableProps((e) => { e.stopPropagation(); ctx.onSelectProject?.(s.projectKey); })}>
         {s.projectName || '-'}
       </span>
     )
+  },
+  {
+    key: 'machine', label: 'Machine', className: 'col-machine', prio: 3, sortField: 'machine',
+    render: (s) => s.machine || ''
   },
   {
     key: 'summary', label: 'Summary / Session Name', className: 'col-summary', prio: 1, sortField: 'summary',
@@ -844,7 +868,7 @@ const COLUMNS = [
   }
 ];
 
-function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onStatusChange, onSummaryEdit, showProject, onSelectProject }) {
+function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, onSummaryEdit, showProject, showMachine, onSelectProject, localMachine, localPathFor }) {
   const [restoring, setRestoring] = useState(null);
   const [restoreMsg, setRestoreMsg] = useState(null);
   const [copied, setCopied] = useState(null);
@@ -866,8 +890,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
     }
   };
 
-  const handleRestore = (sessionId, sessionProjectPath) => {
-    const cwd = sessionProjectPath || projectPath;
+  const handleRestore = (sessionId, cwd) => {
     if (!sessionId || !cwd) return;
     setRestoring(sessionId);
     setRestoreMsg(null);
@@ -903,12 +926,13 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
     return sortDir === 'asc' ? ' ▲' : ' ▼';
   };
 
-  const columns = COLUMNS.filter(c => c.key !== 'project' || showProject);
+  const columns = COLUMNS.filter(c => (c.key !== 'project' || showProject) && (c.key !== 'machine' || showMachine));
 
   const ctx = {
     onStatusChange, onSummaryEdit, onSelectProject,
     restoring, restoreMsg, copied,
-    setRestoreMsg, handleRestore, handleCopyId
+    setRestoreMsg, handleRestore, handleCopyId,
+    localMachine, localPathFor
   };
 
   return (
@@ -943,7 +967,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
   );
 }
 
-function Rollup({ aggregate, beads }) {
+function Rollup({ aggregate, beads, machines, localSpend }) {
   const [collapsed, setCollapsed] = useState(() => {
     const stored = localStorage.getItem('rollupCollapsed');
     if (stored !== null) return stored === 'true';
@@ -975,7 +999,7 @@ function Rollup({ aggregate, beads }) {
   if (hasBeads) {
     digestParts.push(
       `beads ${beads.closed}/${beads.created}`,
-      `$/bead ${typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}`
+      `$/bead ${beadCost({ beads, spend: aggregate.totalCost, localSpend, machines })}`
     );
   }
   digestParts.push(formatDuration(aggregate.totalDurationMs));
@@ -1032,7 +1056,7 @@ function Rollup({ aggregate, beads }) {
             <div className="rollup-title">Beads</div>
             <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
             <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
-            <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+            <div><span className="rollup-label">{beads.machine ? '$/bead (this machine)' : '$/bead'}</span> <span className="rollup-value cost">{beadCost({ beads, spend: aggregate.totalCost, localSpend, machines })}</span></div>
           </div>
         )}
         <div className="rollup-section">
@@ -1049,6 +1073,17 @@ function Rollup({ aggregate, beads }) {
           <div><span className="rollup-label">Est. Manual</span> <span className="rollup-value cost">{formatDuration(aggregate.totalDurationMs * 8)}</span></div>
           <div><span className="rollup-label">Time Saved</span> <span className="rollup-value green">{formatDuration(aggregate.timeSavedMs)}</span></div>
         </div>
+        {machines.length > 0 && (
+          <div className="rollup-section">
+            <div className="rollup-title">By Machine</div>
+            {machines.map(m => (
+              <div key={m.machine}>
+                <span className="rollup-label">{m.machine}</span>{' '}
+                <span className="rollup-value">{m.sessionCount} sess</span> · {formatTokens(m.aggregate.totalInputTokens + m.aggregate.totalOutputTokens + m.aggregate.totalCacheReadTokens + m.aggregate.totalCacheWriteTokens)} · {m.aggregate.totalSubagentCount} subs · <span className="rollup-value cost">{formatCost(m.aggregate.totalCost)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       )}
     </>
@@ -1126,28 +1161,42 @@ function App() {
   const [timeRange, setTimeRange] = useState({ from: null, to: null });
   const [beadsStats, setBeadsStats] = useState(null);
   const [globalBeads, setGlobalBeads] = useState(null);
+  const [localStats, setLocalStats] = useState(null);
+  const [localProjectStats, setLocalProjectStats] = useState(null);
   const [projectStats, setProjectStats] = useState(null);
+  const [selectedMachine, setSelectedMachine] = useState(null);
+  const [machines, setMachines] = useState([]);
 
-  const rangeQS = (sep) => rangeQuery(timeRange, sep);
+  const localMachine = globalBeads?.machine ?? null;
 
-  // Load projects on mount
+  // One query-string builder so every fetch carries the same scope
+  const scopeQS = (sep, { project = true, machine = true, range = true } = {}) => {
+    const parts = [];
+    if (project && selectedProject && selectedProject !== '__all__') parts.push(`project=${encodeURIComponent(selectedProject)}`);
+    if (machine && selectedMachine) parts.push(`machine=${encodeURIComponent(selectedMachine)}`);
+    if (range) {
+      const rangePart = rangeQuery(timeRange, '');
+      if (rangePart) parts.push(rangePart);
+    }
+    return parts.length ? sep + parts.join('&') : '';
+  };
+
+  // Load projects on mount and when the machine scope changes
   useEffect(() => {
-    fetch('/api/projects')
+    fetch(`/api/projects${scopeQS('?', { project: false, range: false })}`)
       .then(r => r.json())
       .then(data => {
         setProjects(data);
         setLoading(false);
-        // Default to All Projects view
-        setSelectedProject('__all__');
+        setSelectedProject(prev => prev && data.some(p => p.key === prev) ? prev : '__all__');
         // Now that projects are loaded (cache populated), fetch wip
         fetch('/api/wip').then(r => r.json()).then(setWipSessions).catch(console.error);
       })
-      .catch(err => {
-        console.error('Failed to load projects:', err);
-        setLoading(false);
-      });
+      .catch(err => { console.error('Failed to load projects:', err); setLoading(false); });
+  }, [selectedMachine]);
 
-    // Poll active sessions
+  // Poll active sessions
+  useEffect(() => {
     const poll = setInterval(() => {
       fetch('/api/active').then(r => r.json()).then(setActiveSessions).catch(() => {});
     }, 5000);
@@ -1180,43 +1229,37 @@ function App() {
         .then(data => { if (!cancelled) setter(data); })
         .catch(onError || console.error);
 
-    const proj = encodeURIComponent(selectedProject);
-
-    load(`/api/stats${rangeQS('?')}`, setStats);
+    load(`/api/stats${scopeQS('?', { project: false })}`, setStats);
 
     // Fetch project-scoped, windowed stats for the project view's Rollup + header
     // (currentProject.aggregate is computed once at scan time and ignores the time window)
     setProjectStats(null);
-    if (selectedProject !== '__all__') {
-      load(`/api/stats?project=${proj}${rangeQS('&')}`, setProjectStats);
-    }
-
-    // Fetch sessions
-    const sessionsUrl = selectedProject === '__all__'
-      ? '/api/sessions/all'
-      : `/api/projects/${proj}/sessions`;
-    load(`${sessionsUrl}${rangeQS('?')}`,
-      data => {
-        setSessions(data);
-        setLoadingSessions(false);
-      },
-      err => {
-        if (cancelled) return;
-        console.error('Failed to load sessions:', err);
-        setLoadingSessions(false);
-      });
-
-    // Fetch chart data filtered by project
-    const projectParam = selectedProject !== '__all__' ? `?project=${proj}` : '';
-    const chartQS = `${projectParam}${rangeQS(projectParam ? '&' : '?')}`;
-    load(`/api/daily-stats${chartQS}`, setDailyStats);
-    load(`/api/monthly-stats${chartQS}`, setMonthlyStats);
-    load(`/api/beads${chartQS}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
-    // Fetch global beads (for TopBar headline $/BEAD) — always global, respecting only time window
-    load(`/api/beads${rangeQS('?')}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
+    if (selectedProject !== '__all__') load(`/api/stats${scopeQS('?')}`, setProjectStats);
+    load(`/api/sessions/all${scopeQS('?')}`, data => { setSessions(data); setLoadingSessions(false); },
+      err => { if (cancelled) return; console.error('Failed to load sessions:', err); setLoadingSessions(false); });
+    load(`/api/daily-stats${scopeQS('?')}`, setDailyStats);
+    load(`/api/monthly-stats${scopeQS('?')}`, setMonthlyStats);
+    load(`/api/machines${scopeQS('?', { machine: false })}`, setMachines, () => { if (!cancelled) setMachines([]); });
+    load(`/api/beads${scopeQS('?', { machine: false })}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
+    load(`/api/beads${scopeQS('?', { project: false, machine: false })}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
 
     return () => { cancelled = true; };
-  }, [selectedProject, timeRange.from, timeRange.to]);
+  }, [selectedProject, selectedMachine, timeRange.from, timeRange.to]);
+
+  // Local-machine spend: separate effect so its dependency on globalBeads
+  // (resolved after the main effect's /api/beads fetch) doesn't re-run the
+  // fetches above on every mount.
+  useEffect(() => {
+    let cancelled = false;
+    const load = (url, setter) =>
+      fetch(url).then(r => r.json()).then(data => { if (!cancelled) setter(data); }).catch(console.error);
+
+    if (localMachine) {
+      load(`/api/stats?machine=${encodeURIComponent(localMachine)}${scopeQS('&', { project: false, machine: false })}`, setLocalStats);
+      load(`/api/stats?machine=${encodeURIComponent(localMachine)}${scopeQS('&', { machine: false })}`, setLocalProjectStats);
+    } else { setLocalStats(null); setLocalProjectStats(null); }
+    return () => { cancelled = true; };
+  }, [localMachine, selectedProject, timeRange.from, timeRange.to]);
 
   // Search
   useEffect(() => {
@@ -1225,13 +1268,13 @@ function App() {
       return;
     }
     const timeout = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}${rangeQS('&')}`)
+      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}${scopeQS('&', { project: false })}`)
         .then(r => r.json())
         .then(setSearchResults)
         .catch(console.error);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [searchQuery, timeRange.from, timeRange.to]);
+  }, [searchQuery, selectedMachine, timeRange.from, timeRange.to]);
 
   const handleSort = useCallback((field, dir) => {
     setSortField(field);
@@ -1277,7 +1320,7 @@ function App() {
   // Count WIP sessions per project from loaded sessions
   const wipCounts = {};
   for (const p of projects) {
-    wipCounts[p.encodedPath] = 0;
+    wipCounts[p.key] = 0;
   }
   // Count from current project's sessions
   if (selectedProject) {
@@ -1288,7 +1331,7 @@ function App() {
 
   const totalWipCount = Object.keys(wipSessions).length;
 
-  const currentProject = projects.find(p => p.encodedPath === selectedProject);
+  const currentProject = projects.find(p => p.key === selectedProject);
 
   // Apply WIP filter
   let displaySessions;
@@ -1306,9 +1349,12 @@ function App() {
     );
   }
 
+  const localPaths = Object.fromEntries(projects.map(p => [p.key, p.localPath]));
+
   const tableProps = {
     sortField, sortDir, onSort: handleSort,
     onStatusChange: handleStatusChange, onSummaryEdit: handleSummaryEdit,
+    localMachine, showMachine: machines.length > 0,
   };
 
   let content;
@@ -1318,8 +1364,8 @@ function App() {
         <ContentHeader title="All Projects" sessionCount={stats.sessionCount}
           totalCost={stats.totalCost} totalDurationMs={stats.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
-          tableProps={{ ...tableProps, projectPath: null, showProject: true, onSelectProject: setSelectedProject }} />
-        <Rollup aggregate={stats} beads={beadsStats} />
+          tableProps={{ ...tableProps, showProject: true, onSelectProject: setSelectedProject, localPathFor: (s) => localPaths[s.projectKey] }} />
+        <Rollup aggregate={stats} beads={beadsStats} machines={machines} localSpend={localStats?.totalCost} />
       </>
     );
   } else if (currentProject) {
@@ -1333,8 +1379,8 @@ function App() {
           sessionCount={projectStats ? projectStats.sessionCount : currentProject.sessionCount}
           totalCost={agg?.totalCost} totalDurationMs={agg?.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
-          tableProps={{ ...tableProps, projectPath: currentProject.path }} />
-        <Rollup aggregate={agg} beads={beadsStats} />
+          tableProps={{ ...tableProps, localPathFor: () => currentProject.localPath }} />
+        <Rollup aggregate={agg} beads={beadsStats} machines={machines} localSpend={localProjectStats?.totalCost} />
       </>
     );
   } else {
@@ -1345,7 +1391,9 @@ function App() {
     <>
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
-        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads} />
+        timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads}
+        machines={machines} selectedMachine={selectedMachine} onSelectMachine={(m) => { setSearchResults(null); setSelectedMachine(m); }}
+        localSpend={localStats?.totalCost} />
       <div className="main-layout">
         <Sidebar
           projects={projects}

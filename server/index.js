@@ -23,146 +23,87 @@ pricing.init({});
 pricing.refresh().then((changed) => { if (changed) console.log('pricing: history updated from LiteLLM'); });
 pricing.startAutoRefresh();
 
-// Build history index on startup (async)
-let historyIndex = {};
-const cfg = config.get();
-parser.buildHistoryIndex(path.join(cfg.claudeDir, 'history.jsonl'))
-  .then(idx => {
-    historyIndex = idx;
-    console.log(`History index: ${Object.keys(idx).length} sessions indexed`);
-  })
-  .catch(err => console.error('Failed to build history index:', err.message));
+const sources = require('./sources');
+const scope = require('./scope');
+
+// One history index per source; the mirror may lack history.jsonl, which yields an empty index
+const historyIndexes = new Map();
+async function loadHistoryIndexes(list) {
+  for (const src of list) {
+    if (historyIndexes.has(src.machine)) continue;
+    const historyPath = path.join(path.dirname(src.projectsDir), 'history.jsonl');
+    try {
+      historyIndexes.set(src.machine, await parser.buildHistoryIndex(historyPath));
+    } catch (err) {
+      console.error(`Failed to build history index for ${src.machine ?? 'local'}:`, err.message);
+      historyIndexes.set(src.machine, {});
+    }
+  }
+}
+
+/** Resolve sources, parse every session (cached), return the flat list. */
+async function loadAllSessions() {
+  const { sources: list, localMachine } = sources.resolveSources();
+  await loadHistoryIndexes(list);
+  return { sessions: await scanner.discoverSessions(list, historyIndexes), localMachine };
+}
 
 // --- API Routes ---
 
 // List all discovered projects with aggregate stats
 app.get('/api/projects', async (req, res) => {
   try {
-    const projects = scanner.discoverProjects();
-    const results = [];
-
-    for (const project of projects) {
-      if (!project.hasSessionData) {
-        results.push({
-          ...project,
-          sessionCount: 0,
-          aggregate: null
-        });
-        continue;
-      }
-
-      const sessions = await scanner.getProjectSessions(project, historyIndex);
-      const aggregate = scanner.aggregateSessions(sessions);
-
-      results.push({
-        name: project.name,
-        path: project.path,
-        encodedPath: project.encodedPath,
-        sessionCount: sessions.length,
-        aggregate
-      });
-    }
-
-    // Sort by session count descending
-    results.sort((a, b) => b.sessionCount - a.sessionCount);
-    res.json(results);
+    const { sessions } = await loadAllSessions();
+    const scoped = scope.scopedSessions(sessions, { machine: req.query.machine });
+    res.json(scope.groupProjects(scoped));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// List sessions for a project
-app.get('/api/projects/:encodedPath/sessions', async (req, res) => {
-  try {
-    const cfg = config.get();
-    const sessionsDir = path.join(cfg.claudeDir, 'projects', req.params.encodedPath);
-
-    const project = {
-      sessionsDir,
-      encodedPath: req.params.encodedPath
-    };
-
-    const sessions = await scanner.getProjectSessions(project, historyIndex);
-
-    // Return lightweight session list (no full metrics detail for list view)
-    const list = sessions.map(s => {
-      const ss = sessionState.getStatus(s.sessionId);
-      const summaryOverride = sessionState.getSummary(s.sessionId);
-      return {
-        sessionId: s.sessionId,
-        sessionName: s.sessionName || null,
-        summary: summaryOverride != null ? summaryOverride : s.summary,
-        primaryModel: s.primaryModel,
-        models: s.models,
-        firstTimestamp: s.firstTimestamp,
-        lastTimestamp: s.lastTimestamp,
-        totalTokens: s.metrics.totalInputTokens + s.metrics.totalOutputTokens +
-                     s.metrics.totalCacheReadTokens + s.metrics.totalCacheWriteTokens,
-        totalCost: s.metrics.totalCost,
-        durationMs: s.metrics.totalDurationMs,
-        turnCount: s.metrics.turnCount,
-        toolCallCount: s.metrics.toolCallCount,
-        subagentCount: s.subagentCount,
-        timeSaved: s.timeSaved,
-        status: ss ? ss.status : null,
-        statusNote: ss ? ss.note : null
-      };
-    });
-
-    // Deduplicate by sessionId — keep the one with the latest lastTimestamp
-    const seen = new Map();
-    for (const s of list) {
-      const existing = seen.get(s.sessionId);
-      if (!existing || (s.lastTimestamp || 0) > (existing.lastTimestamp || 0)) {
-        seen.set(s.sessionId, s);
-      }
-    }
-    const filtered = timerange.filterSessions(Array.from(seen.values()), timerange.parseRange(req.query));
-    res.json(filtered);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+/** Session row shape shared by /api/sessions/all. */
+function sessionRow(s) {
+  const ss = sessionState.getStatus(s.sessionId);
+  const summaryOverride = sessionState.getSummary(s.sessionId);
+  return {
+    sessionId: s.sessionId,
+    sessionName: s.sessionName || null,
+    summary: summaryOverride != null ? summaryOverride : s.summary,
+    primaryModel: s.primaryModel,
+    models: s.models,
+    firstTimestamp: s.firstTimestamp,
+    lastTimestamp: s.lastTimestamp,
+    totalTokens: s.metrics.totalInputTokens + s.metrics.totalOutputTokens +
+                 s.metrics.totalCacheReadTokens + s.metrics.totalCacheWriteTokens,
+    totalCost: s.metrics.totalCost,
+    durationMs: s.metrics.totalDurationMs,
+    turnCount: s.metrics.turnCount,
+    toolCallCount: s.metrics.toolCallCount,
+    subagentCount: s.subagentCount,
+    timeSaved: s.timeSaved,
+    status: ss ? ss.status : null,
+    statusNote: ss ? ss.note : null,
+    machine: s.machine,
+    projectKey: s.projectKey,
+    projectName: s.projectName
+  };
+}
 
 // All sessions across all projects (lightweight list)
 app.get('/api/sessions/all', async (req, res) => {
   try {
-    const allSessions = Array.from(scanner.sessionCache.values());
-    const dedupedSessions = scanner.dedupeBySessionId(allSessions);
+    const scoped = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
+    res.json(scoped.map(sessionRow).sort((a, b) => (b.firstTimestamp || 0) - (a.firstTimestamp || 0)));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const entries = dedupedSessions.map(s => {
-      const ss = sessionState.getStatus(s.sessionId);
-      const summaryOverride = sessionState.getSummary(s.sessionId);
-      return {
-        sessionId: s.sessionId,
-        sessionName: s.sessionName || null,
-        summary: summaryOverride != null ? summaryOverride : s.summary,
-        primaryModel: s.primaryModel,
-        models: s.models,
-        firstTimestamp: s.firstTimestamp,
-        lastTimestamp: s.lastTimestamp,
-        totalTokens: s.metrics.totalInputTokens + s.metrics.totalOutputTokens +
-                     s.metrics.totalCacheReadTokens + s.metrics.totalCacheWriteTokens,
-        totalCost: s.metrics.totalCost,
-        durationMs: s.metrics.totalDurationMs,
-        turnCount: s.metrics.turnCount,
-        toolCallCount: s.metrics.toolCallCount,
-        subagentCount: s.subagentCount,
-        timeSaved: s.timeSaved,
-        status: ss ? ss.status : null,
-        statusNote: ss ? ss.note : null,
-        projectName: s.projectName,
-        encodedPath: s.encodedPath,
-        projectPath: s.projectPath
-      };
-    });
-
-    // Sort newest first
-    const range = timerange.parseRange(req.query);
-    const filtered = timerange.filterSessions(entries, range).sort((a, b) =>
-      (b.firstTimestamp || 0) - (a.firstTimestamp || 0)
-    );
-    res.json(filtered);
+// Per-machine totals for the current project and window; [] when single-source
+app.get('/api/machines', (req, res) => {
+  try {
+    const scoped = scope.scopedSessions(Array.from(scanner.sessionCache.values()), { project: req.query.project, from: req.query.from, to: req.query.to });
+    res.json(scope.machinesSummary(scoped));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -190,34 +131,29 @@ app.get('/api/search', async (req, res) => {
     const query = (req.query.q || '').toLowerCase().trim();
     if (!query) return res.json([]);
 
+    const scoped = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
     const results = [];
-    for (const [, session] of scanner.sessionCache) {
+    for (const session of scoped) {
       if (session.summary?.toLowerCase().includes(query) ||
           session.sessionId?.toLowerCase().includes(query) ||
           session.sessionName?.toLowerCase().includes(query)) {
-        results.push({
-          sessionId: session.sessionId,
-          sessionName: session.sessionName || null,
-          summary: session.summary,
-          primaryModel: session.primaryModel,
-          firstTimestamp: session.firstTimestamp,
-          totalCost: session.metrics.totalCost,
-          durationMs: session.metrics.totalDurationMs
-        });
+        results.push(sessionRow(session));
       }
     }
 
     // Also search history index
-    for (const [sid, entry] of Object.entries(historyIndex)) {
-      if (entry.display.toLowerCase().includes(query) || sid.toLowerCase().includes(query)) {
-        // Avoid duplicates
-        if (!results.some(r => r.sessionId === sid)) {
-          results.push({
-            sessionId: sid,
-            summary: entry.display,
-            project: entry.project,
-            firstTimestamp: entry.timestamp
-          });
+    for (const index of historyIndexes.values()) {
+      for (const [sid, entry] of Object.entries(index)) {
+        if (entry.display.toLowerCase().includes(query) || sid.toLowerCase().includes(query)) {
+          // Avoid duplicates
+          if (!results.some(r => r.sessionId === sid)) {
+            results.push({
+              sessionId: sid,
+              summary: entry.display,
+              project: entry.project,
+              firstTimestamp: entry.timestamp
+            });
+          }
         }
       }
     }
@@ -233,18 +169,14 @@ app.get('/api/search', async (req, res) => {
 // Global aggregate stats
 app.get('/api/stats', async (req, res) => {
   try {
-    const allSessions = Array.from(scanner.sessionCache.values());
-    const dedupedSessions = scanner.dedupeBySessionId(allSessions);
-    const range = timerange.parseRange(req.query);
-    const projectSessions = timerange.filterByProject(dedupedSessions, req.query.project);
-    const sessions = timerange.filterSessions(projectSessions, range);
+    const sessions = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
     const aggregate = scanner.aggregateSessions(sessions);
     const activeSessions = scanner.getActiveSessions();
 
     res.json({
       ...aggregate,
       activeSessions,
-      projectCount: scanner.discoverProjects().length,
+      projectCount: new Set(sessions.map(s => s.projectKey)).size,
       multiplier: config.get().timeSaved.multiplier
     });
   } catch (err) {
@@ -255,14 +187,10 @@ app.get('/api/stats', async (req, res) => {
 // Daily stats — aggregate tokens and cost per day
 app.get('/api/daily-stats', async (req, res) => {
   try {
-    let allSessions = Array.from(scanner.sessionCache.values());
-    if (req.query.project) {
-      allSessions = allSessions.filter(s => s.encodedPath === req.query.project);
-    }
-    allSessions = timerange.filterSessions(allSessions, timerange.parseRange(req.query));
+    const sessions = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
     const dailyMap = {}; // 'YYYY-MM-DD' -> { tokens, cost, sessions, durationMs }
 
-    for (const s of allSessions) {
+    for (const s of sessions) {
       if (!s.firstTimestamp) continue;
       const date = new Date(s.firstTimestamp).toISOString().split('T')[0];
       if (!dailyMap[date]) {
@@ -293,14 +221,10 @@ app.get('/api/daily-stats', async (req, res) => {
 // Monthly stats — aggregate tokens and cost per month
 app.get('/api/monthly-stats', async (req, res) => {
   try {
-    let allSessions = Array.from(scanner.sessionCache.values());
-    if (req.query.project) {
-      allSessions = allSessions.filter(s => s.encodedPath === req.query.project);
-    }
-    allSessions = timerange.filterSessions(allSessions, timerange.parseRange(req.query));
+    const sessions = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
     const monthlyMap = {}; // 'YYYY-MM' -> { month, cost, tokens, sessions, durationMs }
 
-    for (const s of allSessions) {
+    for (const s of sessions) {
       if (!s.firstTimestamp) continue;
       const month = new Date(s.firstTimestamp).toISOString().slice(0, 7);
       if (!monthlyMap[month]) {
@@ -396,27 +320,28 @@ app.get('/api/wip', (req, res) => {
 app.get('/api/beads', async (req, res) => {
   try {
     const range = timerange.parseRange(req.query);
-    const projects = scanner.discoverProjects();
-    const targets = req.query.project
-      ? projects.filter((p) => p.encodedPath === req.query.project)
-      : projects;
-    const withBeads = targets.filter((p) => beads.hasBeads(p.path));
-    if (withBeads.length === 0) return res.json({ hasBeads: false, created: 0, closed: 0 });
+    const { sessions, localMachine } = await loadAllSessions();
+    const projects = scope.groupProjects(sessions)
+      .filter((p) => p.localPath && (!req.query.project || p.key === req.query.project))
+      .filter((p) => beads.hasBeads(p.localPath));
+    if (projects.length === 0) return res.json({ hasBeads: false, created: 0, closed: 0, machine: localMachine });
     let created = 0, closed = 0;
-    for (const p of withBeads) {
-      const counts = beads.countBeads(await beads.getBeadRecords(p.path), range);
+    for (const p of projects) {
+      const counts = beads.countBeads(await beads.getBeadRecords(p.localPath), range);
       created += counts.created; closed += counts.closed;
     }
-    res.json({ hasBeads: true, created, closed });
+    res.json({ hasBeads: true, created, closed, machine: localMachine });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // Start server
+const cfg = config.get();
 const port = cfg.port || 9000;
 app.listen(port, () => {
   console.log(`CC-Mission-Control running at http://localhost:${port}`);
-  console.log(`Scanning: ${cfg.scanPath}`);
+  const { sources: list } = sources.resolveSources();
+  console.log(`Sources: ${list.map(s => s.machine ?? 'local').join(', ')}`);
   console.log(`Claude data: ${cfg.claudeDir}`);
 });

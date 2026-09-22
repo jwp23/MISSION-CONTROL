@@ -9,8 +9,17 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** `scanPath` is removed from `config.json`. Projects are discovered from session transcripts, not by scanning a directory; every session under `~/.claude/projects` now counts, including worktrees and sessions outside the old `scanPath`. Totals will rise on upgrade. A leftover `scanPath` key is ignored.
+
+### Added
+
+- Multi-machine sessions via the agent-downlink mirror: machine picker, Machine column, By Machine rollup, `$/Bead (this machine)`.
+
 ### Fixed
 
+- SonarQube quality gate cleanup for multi-machine sources (PR #6): 3× S8476 same-origin percent-encoded client URLs in `public/app.js`, 1× S5145 log message built from `agent-downlink` config content read from the local filesystem (same trust boundary as the process) — all Accepted-with-rationale in SonarCloud, consistent with the PR #4 precedent below.
 - SonarQube quality gate cleanup — all 107 open findings + 1 security hotspot resolved (PR #4)
   - Path-injection BLOCKERs in `server/scanner.js` fixed via `resolveWithin()` containment (sessionsDir within the Claude projects dir, scanPath within `$HOME`), with traversal tests; note: a scanPath outside `$HOME` now yields no projects
   - Transcript parser decomposed (cognitive complexity 110 → under limit), pinned by 12 new characterization tests in `server/parser.test.js`; tag-strip regex rewritten backtracking-safe

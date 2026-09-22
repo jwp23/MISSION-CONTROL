@@ -219,3 +219,22 @@ test('buildHistoryIndex: missing file returns empty index', async () => {
   const idx = await buildHistoryIndex(path.join(tmpDir, 'nope.jsonl'));
   assert.deepStrictEqual(idx, {});
 });
+
+test('cwd capture: records the first cwd and ignores later ones', async () => {
+  const lines = [
+    JSON.stringify({ type: 'user', sessionId: 's1', timestamp: '2026-03-25T09:59:00Z', message: { content: 'hi' } }),
+    JSON.stringify({ type: 'user', sessionId: 's1', cwd: '/home/u/workspace/app', timestamp: '2026-03-25T10:00:00Z', message: { content: 'x' } }),
+    JSON.stringify({ type: 'user', sessionId: 's1', cwd: '/home/u/workspace/app/sub', timestamp: '2026-03-25T10:01:00Z', message: { content: 'y' } })
+  ];
+  const p = writeFixture('cwd1.jsonl', lines);
+  const parsed = await parseSessionFile(p);
+  assert.equal(parsed.cwd, '/home/u/workspace/app');
+});
+
+test('cwd capture: returns null cwd when no entry has one', async () => {
+  const p = writeFixture('cwd2.jsonl', [
+    JSON.stringify({ type: 'user', sessionId: 's2', message: { content: 'hi' } })
+  ]);
+  const parsed = await parseSessionFile(p);
+  assert.equal(parsed.cwd, null);
+});

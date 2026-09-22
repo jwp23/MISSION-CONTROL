@@ -41,11 +41,11 @@ Purpose: This file describes the project's technical foundation — hosting, lan
 ## Where It Lives
 
 - **Hosting Provider:** Local-only (runs on developer machine)
-- **External Services:** None — reads Claude Code's local `.jsonl` files
+- **External Services:** None — reads Claude Code's local `.jsonl` files, or the agent-downlink mirror when present
 
 ---
 
 ## Data Storage
 
-- **Data Storage Method:** File-based — reads Claude Code JSONL session files directly
+- **Data Storage Method:** File-based — reads Claude Code JSONL session files directly; multi-machine transcripts read from the agent-downlink mirror when configured
 - **Schema Details:** No database; config stored in `config.json` (gitignored)

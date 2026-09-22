@@ -163,6 +163,10 @@ function processEntry(entry, metrics, session) {
     session.sessionId = entry.sessionId;
   }
 
+  if (!session.cwd && typeof entry.cwd === 'string') {
+    session.cwd = entry.cwd;
+  }
+
   updateTimestamps(entry, session);
   session.sessionName = extractSessionName(entry, session.sessionName);
 
@@ -202,6 +206,7 @@ async function parseSessionFile(filePath) {
   const session = {
     sessionId: null,
     sessionName: null,          // From custom-title or agent-name entries
+    cwd: null,                  // First cwd encountered in transcript
     firstTimestamp: null,
     lastTimestamp: null,
     userMessages: [],           // Collect first few user messages for summary
@@ -236,6 +241,7 @@ async function parseSessionFile(filePath) {
   return {
     sessionId: session.sessionId,
     sessionName: session.sessionName,
+    cwd: session.cwd,
     filePath,
     summary,
     firstTimestamp: session.firstTimestamp,

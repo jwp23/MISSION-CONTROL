@@ -641,3 +641,56 @@ describe('aggregateSessions with subagent data', () => {
     assert.equal(agg.totalSubagentCount, 0);
   });
 });
+
+describe('discoverSessions across sources', () => {
+  function makeSource(machine, encoded, cwd, sessionId) {
+    const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), `mc-src-${machine}-`));
+    const dir = path.join(projectsDir, encoded);
+    fs.mkdirSync(dir);
+    const line = JSON.stringify({ type: 'user', sessionId, cwd, timestamp: '2026-03-25T10:00:00Z', message: { content: 'hello there this is a short project note' } });
+    fs.writeFileSync(path.join(dir, `${sessionId}.jsonl`), line + '\n' + makeAssistantEntry('claude-sonnet-4-6', 10, 5, { sessionId }) + '\n');
+    return { machine, projectsDir };
+  }
+
+  it('tags sessions with machine and projectKey and merges the same project across machines', async () => {
+    loadTestConfig();
+    scanner.sessionCache.clear();
+    const a = makeSource('linux-box', '-home-u-workspace-app', '/home/u/workspace/app', 'sess-a');
+    const b = makeSource('mac-box', '-Users-u-workspace-app', '/Users/u/workspace/app', 'sess-b');
+    const sessions = await scanner.discoverSessions([a, b], new Map());
+    assert.equal(sessions.length, 2);
+    const byId = Object.fromEntries(sessions.map(s => [s.sessionId, s]));
+    assert.equal(byId['sess-a'].machine, 'linux-box');
+    assert.equal(byId['sess-b'].machine, 'mac-box');
+    assert.equal(byId['sess-a'].projectKey, 'workspace/app');
+    assert.equal(byId['sess-b'].projectKey, 'workspace/app');
+    assert.equal(byId['sess-a'].projectName, 'app');
+  });
+
+  it('keeps the same sessionId from two sources as two cache entries', async () => {
+    loadTestConfig();
+    scanner.sessionCache.clear();
+    const a = makeSource('m1', '-home-u-p', '/home/u/p', 'dup');
+    const b = makeSource('m2', '-home-u-p', '/home/u/p', 'dup');
+    await scanner.discoverSessions([a, b], new Map());
+    assert.equal(scanner.sessionCache.size, 2);
+  });
+
+  it('uses the source machine history index for summaries', async () => {
+    loadTestConfig();
+    scanner.sessionCache.clear();
+    const a = makeSource('m1', '-home-u-p', '/home/u/p', 'hist');
+    const idx = new Map([['m1', { hist: { display: 'A much longer summary from history that wins', timestamp: 1, project: '' } }]]);
+    const [s] = await scanner.discoverSessions([a], idx);
+    assert.equal(s.summary, 'A much longer summary from history that wins');
+  });
+
+  it('applies projectKey (temp) to sessions outside home', async () => {
+    loadTestConfig();
+    scanner.sessionCache.clear();
+    const a = makeSource('m1', '-tmp-x', '/tmp/x', 'tmp1');
+    const [s] = await scanner.discoverSessions([a], new Map());
+    assert.equal(s.projectKey, '(temp)');
+    assert.equal(s.projectName, '(temp)');
+  });
+});
