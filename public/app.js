@@ -641,15 +641,15 @@ function Sidebar({ projects, selectedProject, onSelect, activeSessions, wipCount
       <div className="sidebar-divider"></div>
       {projects.map(p => {
         let dotClass = '';
-        if (activeProjects.has(p.path)) dotClass = 'active';
+        if (activeProjects.has(p.localPath)) dotClass = 'active';
         else if (p.sessionCount > 0) dotClass = 'has-sessions';
-        const wip = wipCounts[p.encodedPath] || 0;
+        const wip = wipCounts[p.key] || 0;
 
         return (
           <div
-            key={p.encodedPath}
-            className={`project-item ${selectedProject === p.encodedPath ? 'active' : ''}`}
-            {...clickableProps(() => onSelect(p.encodedPath))}
+            key={p.key}
+            className={`project-item ${selectedProject === p.key ? 'active' : ''}`}
+            {...clickableProps(() => onSelect(p.key))}
           >
             <span className={`project-dot ${dotClass}`}></span>
             <span className="project-name">{p.name}</span>
@@ -796,10 +796,13 @@ const COLUMNS = [
           >{msg.copied ? 'Copied!' : 'Copy Cmd'}</button>;
         }
 
+        const localPath = ctx.localPathFor(s);
+        const isLocal = s.machine === null || s.machine === ctx.localMachine;
+        if (!isLocal || !localPath) return null;
         return <button
           type="button"
           className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
-          onClick={(e) => { e.stopPropagation(); ctx.handleRestore(s.sessionId, s.projectPath); }}
+          onClick={(e) => { e.stopPropagation(); ctx.handleRestore(s.sessionId, localPath); }}
           title={`Resume session\n${s.sessionId}`}
           disabled={isRestoring}
         >{isRestoring ? '...' : 'Launch'}</button>;
@@ -809,7 +812,7 @@ const COLUMNS = [
   {
     key: 'project', label: 'Project', className: 'col-project', prio: 1, sortField: 'projectName',
     render: (s, ctx) => (
-      <span className="project-link" {...clickableProps((e) => { e.stopPropagation(); ctx.onSelectProject?.(s.encodedPath); })}>
+      <span className="project-link" {...clickableProps((e) => { e.stopPropagation(); ctx.onSelectProject?.(s.projectKey); })}>
         {s.projectName || '-'}
       </span>
     )
@@ -844,7 +847,7 @@ const COLUMNS = [
   }
 ];
 
-function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onStatusChange, onSummaryEdit, showProject, onSelectProject }) {
+function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, onSummaryEdit, showProject, onSelectProject, localMachine, localPathFor }) {
   const [restoring, setRestoring] = useState(null);
   const [restoreMsg, setRestoreMsg] = useState(null);
   const [copied, setCopied] = useState(null);
@@ -866,8 +869,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
     }
   };
 
-  const handleRestore = (sessionId, sessionProjectPath) => {
-    const cwd = sessionProjectPath || projectPath;
+  const handleRestore = (sessionId, cwd) => {
     if (!sessionId || !cwd) return;
     setRestoring(sessionId);
     setRestoreMsg(null);
@@ -908,7 +910,8 @@ function SessionTable({ sessions, sortField, sortDir, onSort, projectPath, onSta
   const ctx = {
     onStatusChange, onSummaryEdit, onSelectProject,
     restoring, restoreMsg, copied,
-    setRestoreMsg, handleRestore, handleCopyId
+    setRestoreMsg, handleRestore, handleCopyId,
+    localMachine, localPathFor
   };
 
   return (
@@ -1127,27 +1130,35 @@ function App() {
   const [beadsStats, setBeadsStats] = useState(null);
   const [globalBeads, setGlobalBeads] = useState(null);
   const [projectStats, setProjectStats] = useState(null);
+  const [selectedMachine, setSelectedMachine] = useState(null);
+  const [machines, setMachines] = useState([]);
 
-  const rangeQS = (sep) => rangeQuery(timeRange, sep);
+  // One query-string builder so every fetch carries the same scope
+  const scopeQS = (sep, { project = true, machine = true } = {}) => {
+    const parts = [];
+    if (project && selectedProject && selectedProject !== '__all__') parts.push(`project=${encodeURIComponent(selectedProject)}`);
+    if (machine && selectedMachine) parts.push(`machine=${encodeURIComponent(selectedMachine)}`);
+    const range = rangeQuery(timeRange, '');
+    if (range) parts.push(range);
+    return parts.length ? sep + parts.join('&') : '';
+  };
 
-  // Load projects on mount
+  // Load projects on mount and when the machine scope changes
   useEffect(() => {
-    fetch('/api/projects')
+    fetch(`/api/projects${scopeQS('?', { project: false })}`)
       .then(r => r.json())
       .then(data => {
         setProjects(data);
         setLoading(false);
-        // Default to All Projects view
-        setSelectedProject('__all__');
+        setSelectedProject(prev => prev && data.some(p => p.key === prev) ? prev : '__all__');
         // Now that projects are loaded (cache populated), fetch wip
         fetch('/api/wip').then(r => r.json()).then(setWipSessions).catch(console.error);
       })
-      .catch(err => {
-        console.error('Failed to load projects:', err);
-        setLoading(false);
-      });
+      .catch(err => { console.error('Failed to load projects:', err); setLoading(false); });
+  }, [selectedMachine]);
 
-    // Poll active sessions
+  // Poll active sessions
+  useEffect(() => {
     const poll = setInterval(() => {
       fetch('/api/active').then(r => r.json()).then(setActiveSessions).catch(() => {});
     }, 5000);
@@ -1180,43 +1191,21 @@ function App() {
         .then(data => { if (!cancelled) setter(data); })
         .catch(onError || console.error);
 
-    const proj = encodeURIComponent(selectedProject);
-
-    load(`/api/stats${rangeQS('?')}`, setStats);
+    load(`/api/stats${scopeQS('?', { project: false })}`, setStats);
 
     // Fetch project-scoped, windowed stats for the project view's Rollup + header
     // (currentProject.aggregate is computed once at scan time and ignores the time window)
     setProjectStats(null);
-    if (selectedProject !== '__all__') {
-      load(`/api/stats?project=${proj}${rangeQS('&')}`, setProjectStats);
-    }
-
-    // Fetch sessions
-    const sessionsUrl = selectedProject === '__all__'
-      ? '/api/sessions/all'
-      : `/api/projects/${proj}/sessions`;
-    load(`${sessionsUrl}${rangeQS('?')}`,
-      data => {
-        setSessions(data);
-        setLoadingSessions(false);
-      },
-      err => {
-        if (cancelled) return;
-        console.error('Failed to load sessions:', err);
-        setLoadingSessions(false);
-      });
-
-    // Fetch chart data filtered by project
-    const projectParam = selectedProject !== '__all__' ? `?project=${proj}` : '';
-    const chartQS = `${projectParam}${rangeQS(projectParam ? '&' : '?')}`;
-    load(`/api/daily-stats${chartQS}`, setDailyStats);
-    load(`/api/monthly-stats${chartQS}`, setMonthlyStats);
-    load(`/api/beads${chartQS}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
-    // Fetch global beads (for TopBar headline $/BEAD) — always global, respecting only time window
-    load(`/api/beads${rangeQS('?')}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
-
+    if (selectedProject !== '__all__') load(`/api/stats${scopeQS('?')}`, setProjectStats);
+    load(`/api/sessions/all${scopeQS('?')}`, data => { setSessions(data); setLoadingSessions(false); },
+      err => { if (cancelled) return; console.error('Failed to load sessions:', err); setLoadingSessions(false); });
+    load(`/api/daily-stats${scopeQS('?')}`, setDailyStats);
+    load(`/api/monthly-stats${scopeQS('?')}`, setMonthlyStats);
+    load(`/api/machines${scopeQS('?', { machine: false })}`, setMachines, () => { if (!cancelled) setMachines([]); });
+    load(`/api/beads${scopeQS('?', { machine: false })}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
+    load(`/api/beads${scopeQS('?', { project: false, machine: false })}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
     return () => { cancelled = true; };
-  }, [selectedProject, timeRange.from, timeRange.to]);
+  }, [selectedProject, selectedMachine, timeRange.from, timeRange.to]);
 
   // Search
   useEffect(() => {
@@ -1225,7 +1214,7 @@ function App() {
       return;
     }
     const timeout = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}${rangeQS('&')}`)
+      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}${scopeQS('&', { project: false })}`)
         .then(r => r.json())
         .then(setSearchResults)
         .catch(console.error);
@@ -1277,7 +1266,7 @@ function App() {
   // Count WIP sessions per project from loaded sessions
   const wipCounts = {};
   for (const p of projects) {
-    wipCounts[p.encodedPath] = 0;
+    wipCounts[p.key] = 0;
   }
   // Count from current project's sessions
   if (selectedProject) {
@@ -1288,7 +1277,7 @@ function App() {
 
   const totalWipCount = Object.keys(wipSessions).length;
 
-  const currentProject = projects.find(p => p.encodedPath === selectedProject);
+  const currentProject = projects.find(p => p.key === selectedProject);
 
   // Apply WIP filter
   let displaySessions;
@@ -1306,9 +1295,13 @@ function App() {
     );
   }
 
+  const localMachine = globalBeads?.machine ?? null;
+  const localPaths = Object.fromEntries(projects.map(p => [p.key, p.localPath]));
+
   const tableProps = {
     sortField, sortDir, onSort: handleSort,
     onStatusChange: handleStatusChange, onSummaryEdit: handleSummaryEdit,
+    localMachine,
   };
 
   let content;
@@ -1318,7 +1311,7 @@ function App() {
         <ContentHeader title="All Projects" sessionCount={stats.sessionCount}
           totalCost={stats.totalCost} totalDurationMs={stats.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
-          tableProps={{ ...tableProps, projectPath: null, showProject: true, onSelectProject: setSelectedProject }} />
+          tableProps={{ ...tableProps, showProject: true, onSelectProject: setSelectedProject, localPathFor: (s) => localPaths[s.projectKey] }} />
         <Rollup aggregate={stats} beads={beadsStats} />
       </>
     );
@@ -1333,7 +1326,7 @@ function App() {
           sessionCount={projectStats ? projectStats.sessionCount : currentProject.sessionCount}
           totalCost={agg?.totalCost} totalDurationMs={agg?.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
-          tableProps={{ ...tableProps, projectPath: currentProject.path }} />
+          tableProps={{ ...tableProps, localPathFor: () => currentProject.localPath }} />
         <Rollup aggregate={agg} beads={beadsStats} />
       </>
     );
