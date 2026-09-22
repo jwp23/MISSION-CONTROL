@@ -563,9 +563,20 @@ function ChartsPanel({ dailyStats, monthlyStats, onSelectRange }) {
   );
 }
 
+// $/bead: spend ÷ beads closed. With a machine dimension, spend is this machine's only,
+// because bead counts come from the local checkout.
+function beadCost({ beads, spend, localSpend, machines }) {
+  if (!beads?.hasBeads || beads.closed <= 0) return '—';
+  if (!beads.machine) return typeof spend === 'number' ? formatCost(spend / beads.closed) : '—';
+  const known = machines.some(m => m.machine === beads.machine);
+  if (!known || typeof localSpend !== 'number') return '—';
+  return formatCost(localSpend / beads.closed);
+}
+function beadLabel(beads) { return beads?.machine ? '$/Bead (this machine)' : '$/Bead'; }
+
 // --- Components ---
 
-function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine }) {
+function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine, localSpend }) {
   return (
     <div className="top-bar">
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
@@ -591,9 +602,9 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
         {beads?.hasBeads && (
-          <span className="stat-item money" title="$/Bead = spend ÷ beads closed for the current scope and window">
-            <span className="stat-label">$/Bead</span>
-            <span className="stat-value cost">{typeof stats.totalCost === 'number' && beads.closed > 0 ? formatCost(stats.totalCost / beads.closed) : '—'}</span>
+          <span className="stat-item money" title={beads.machine ? 'Spend on this machine ÷ beads closed in the local checkout' : '$/Bead = spend ÷ beads closed for the current scope and window'}>
+            <span className="stat-label">{beadLabel(beads)}</span>
+            <span className="stat-value cost">{beadCost({ beads, spend: stats.totalCost, localSpend: localSpend, machines })}</span>
           </span>
         )}
       </div>
@@ -956,7 +967,7 @@ function SessionTable({ sessions, sortField, sortDir, onSort, onStatusChange, on
   );
 }
 
-function Rollup({ aggregate, beads, machines }) {
+function Rollup({ aggregate, beads, machines, localSpend }) {
   const [collapsed, setCollapsed] = useState(() => {
     const stored = localStorage.getItem('rollupCollapsed');
     if (stored !== null) return stored === 'true';
@@ -988,7 +999,7 @@ function Rollup({ aggregate, beads, machines }) {
   if (hasBeads) {
     digestParts.push(
       `beads ${beads.closed}/${beads.created}`,
-      `$/bead ${typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}`
+      `$/bead ${beadCost({ beads, spend: aggregate.totalCost, localSpend, machines })}`
     );
   }
   digestParts.push(formatDuration(aggregate.totalDurationMs));
@@ -1045,7 +1056,7 @@ function Rollup({ aggregate, beads, machines }) {
             <div className="rollup-title">Beads</div>
             <div><span className="rollup-label">Closed</span> <span className="rollup-value">{beads.closed}</span></div>
             <div><span className="rollup-label">Created</span> <span className="rollup-value">{beads.created}</span></div>
-            <div><span className="rollup-label">$/bead</span> <span className="rollup-value cost">{typeof aggregate.totalCost === 'number' && beads.closed > 0 ? formatCost(aggregate.totalCost / beads.closed) : '—'}</span></div>
+            <div><span className="rollup-label">{beads.machine ? '$/bead (this machine)' : '$/bead'}</span> <span className="rollup-value cost">{beadCost({ beads, spend: aggregate.totalCost, localSpend, machines })}</span></div>
           </div>
         )}
         <div className="rollup-section">
@@ -1150,6 +1161,8 @@ function App() {
   const [timeRange, setTimeRange] = useState({ from: null, to: null });
   const [beadsStats, setBeadsStats] = useState(null);
   const [globalBeads, setGlobalBeads] = useState(null);
+  const [localStats, setLocalStats] = useState(null);
+  const [localProjectStats, setLocalProjectStats] = useState(null);
   const [projectStats, setProjectStats] = useState(null);
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [machines, setMachines] = useState([]);
@@ -1227,8 +1240,14 @@ function App() {
     load(`/api/machines${scopeQS('?', { machine: false })}`, setMachines, () => { if (!cancelled) setMachines([]); });
     load(`/api/beads${scopeQS('?', { machine: false })}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
     load(`/api/beads${scopeQS('?', { project: false, machine: false })}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
+
+    const lm = globalBeads?.machine;
+    if (lm) {
+      load(`/api/stats?machine=${encodeURIComponent(lm)}${scopeQS('&', { project: false, machine: false })}`, setLocalStats);
+      load(`/api/stats?machine=${encodeURIComponent(lm)}${scopeQS('&', { machine: false })}`, setLocalProjectStats);
+    } else { setLocalStats(null); setLocalProjectStats(null); }
     return () => { cancelled = true; };
-  }, [selectedProject, selectedMachine, timeRange.from, timeRange.to]);
+  }, [selectedProject, selectedMachine, timeRange.from, timeRange.to, globalBeads?.machine]);
 
   // Search
   useEffect(() => {
@@ -1335,7 +1354,7 @@ function App() {
           totalCost={stats.totalCost} totalDurationMs={stats.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
           tableProps={{ ...tableProps, showProject: true, onSelectProject: setSelectedProject, localPathFor: (s) => localPaths[s.projectKey] }} />
-        <Rollup aggregate={stats} beads={beadsStats} machines={machines} />
+        <Rollup aggregate={stats} beads={beadsStats} machines={machines} localSpend={localStats?.totalCost} />
       </>
     );
   } else if (currentProject) {
@@ -1350,7 +1369,7 @@ function App() {
           totalCost={agg?.totalCost} totalDurationMs={agg?.totalDurationMs} />
         <SessionsPane loading={loadingSessions} sessions={displaySessions}
           tableProps={{ ...tableProps, localPathFor: () => currentProject.localPath }} />
-        <Rollup aggregate={agg} beads={beadsStats} machines={machines} />
+        <Rollup aggregate={agg} beads={beadsStats} machines={machines} localSpend={localProjectStats?.totalCost} />
       </>
     );
   } else {
@@ -1362,7 +1381,8 @@ function App() {
       <TopBar stats={stats} searchQuery={searchQuery} onSearch={setSearchQuery}
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
         timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads}
-        machines={machines} selectedMachine={selectedMachine} onSelectMachine={(m) => { setSearchResults(null); setSelectedMachine(m); }} />
+        machines={machines} selectedMachine={selectedMachine} onSelectMachine={(m) => { setSearchResults(null); setSelectedMachine(m); }}
+        localSpend={localStats?.totalCost} />
       <div className="main-layout">
         <Sidebar
           projects={projects}
