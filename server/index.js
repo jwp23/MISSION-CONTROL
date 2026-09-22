@@ -41,12 +41,24 @@ async function loadHistoryIndexes(list) {
   }
 }
 
+// Which machine we are running on, per agent-downlink; null without a mirror.
+// Breaks ties when two sources hold the same session — see scope.duplicateReport.
+let localMachine = null;
+
 /** Resolve sources, parse every session (cached), return the flat list. */
 async function loadAllSessions() {
-  const { sources: list, localMachine } = sources.resolveSources();
+  const { sources: list, localMachine: machine } = sources.resolveSources();
+  localMachine = machine;
   await loadHistoryIndexes(list);
   return { sessions: await scanner.discoverSessions(list, historyIndexes), localMachine };
 }
+
+/** Every endpoint scopes through here so source precedence is applied once. */
+function scoped(sessions, query) {
+  return scope.scopedSessions(sessions, query, localMachine);
+}
+
+const cachedSessions = () => Array.from(scanner.sessionCache.values());
 
 // --- API Routes ---
 
@@ -54,8 +66,8 @@ async function loadAllSessions() {
 app.get('/api/projects', async (req, res) => {
   try {
     const { sessions } = await loadAllSessions();
-    const scoped = scope.scopedSessions(sessions, { machine: req.query.machine });
-    res.json(scope.groupProjects(scoped));
+    const inScope = scoped(sessions, { machine: req.query.machine });
+    res.json(scope.groupProjects(inScope));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -92,8 +104,8 @@ function sessionRow(s) {
 // All sessions across all projects (lightweight list)
 app.get('/api/sessions/all', async (req, res) => {
   try {
-    const scoped = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
-    res.json(scoped.map(sessionRow).sort((a, b) => (b.firstTimestamp || 0) - (a.firstTimestamp || 0)));
+    const inScope = scoped(cachedSessions(), req.query);
+    res.json(inScope.map(sessionRow).sort((a, b) => (b.firstTimestamp || 0) - (a.firstTimestamp || 0)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -102,8 +114,18 @@ app.get('/api/sessions/all', async (req, res) => {
 // Per-machine totals for the current project and window; [] when single-source
 app.get('/api/machines', (req, res) => {
   try {
-    const scoped = scope.scopedSessions(Array.from(scanner.sessionCache.values()), { project: req.query.project, from: req.query.from, to: req.query.to });
-    res.json(scope.machinesSummary(scoped));
+    const inScope = scoped(cachedSessions(), { project: req.query.project, from: req.query.from, to: req.query.to });
+    res.json(scope.machinesSummary(inScope));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Machines whose transcripts are a copy of another machine's; [] when healthy.
+// Unscoped on purpose — a copied history is a mirror problem, not a view problem.
+app.get('/api/duplicates', (req, res) => {
+  try {
+    res.json(scope.duplicateReport(cachedSessions(), localMachine));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -131,9 +153,9 @@ app.get('/api/search', async (req, res) => {
     const query = (req.query.q || '').toLowerCase().trim();
     if (!query) return res.json([]);
 
-    const scoped = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
+    const inScope = scoped(cachedSessions(), req.query);
     const results = [];
-    for (const session of scoped) {
+    for (const session of inScope) {
       if (session.summary?.toLowerCase().includes(query) ||
           session.sessionId?.toLowerCase().includes(query) ||
           session.sessionName?.toLowerCase().includes(query)) {
@@ -169,7 +191,7 @@ app.get('/api/search', async (req, res) => {
 // Global aggregate stats
 app.get('/api/stats', async (req, res) => {
   try {
-    const sessions = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
+    const sessions = scoped(cachedSessions(), req.query);
     const aggregate = scanner.aggregateSessions(sessions);
     const activeSessions = scanner.getActiveSessions();
 
@@ -187,7 +209,7 @@ app.get('/api/stats', async (req, res) => {
 // Daily stats — aggregate tokens and cost per day
 app.get('/api/daily-stats', async (req, res) => {
   try {
-    const sessions = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
+    const sessions = scoped(cachedSessions(), req.query);
     const dailyMap = {}; // 'YYYY-MM-DD' -> { tokens, cost, sessions, durationMs }
 
     for (const s of sessions) {
@@ -221,7 +243,7 @@ app.get('/api/daily-stats', async (req, res) => {
 // Monthly stats — aggregate tokens and cost per month
 app.get('/api/monthly-stats', async (req, res) => {
   try {
-    const sessions = scope.scopedSessions(Array.from(scanner.sessionCache.values()), req.query);
+    const sessions = scoped(cachedSessions(), req.query);
     const monthlyMap = {}; // 'YYYY-MM' -> { month, cost, tokens, sessions, durationMs }
 
     for (const s of sessions) {
@@ -320,7 +342,7 @@ app.get('/api/wip', (req, res) => {
 app.get('/api/beads', async (req, res) => {
   try {
     const range = timerange.parseRange(req.query);
-    const { sessions, localMachine } = await loadAllSessions();
+    const { sessions } = await loadAllSessions();
     const projects = scope.groupProjects(sessions)
       .filter((p) => p.localPath && (!req.query.project || p.key === req.query.project))
       .filter((p) => beads.hasBeads(p.localPath));
@@ -341,7 +363,8 @@ const cfg = config.get();
 const port = cfg.port || 9000;
 app.listen(port, () => {
   console.log(`CC-Mission-Control running at http://localhost:${port}`);
-  const { sources: list } = sources.resolveSources();
+  const { sources: list, localMachine: machine } = sources.resolveSources();
+  localMachine = machine;
   console.log(`Sources: ${list.map(s => s.machine ?? 'local').join(', ')}`);
   console.log(`Claude data: ${cfg.claudeDir}`);
 });

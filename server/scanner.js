@@ -292,11 +292,40 @@ async function discoverSessions(sources, historyIndexes) {
 }
 
 /**
- * Deduplicate sessions by sessionId, keeping the entry with the latest lastTimestamp.
- * Sessions without a sessionId pass through unchanged.
+ * Order machines by how much authority their transcripts carry: the local
+ * machine first, then whoever has the most recent session, then by name so a
+ * byte-identical copy still resolves the same way on every scan. Per-session
+ * timestamps cannot decide this — a copied history ties on all of them.
  */
-function dedupeBySessionId(sessions) {
+function sourcePrecedence(sessions, localMachine) {
+  const newest = new Map();
+  for (const s of sessions) {
+    if (!s.sessionId) continue;
+    const ts = s.lastTimestamp || 0;
+    if (ts > (newest.get(s.machine) || 0)) newest.set(s.machine, ts);
+  }
+  const ranked = Array.from(newest.keys()).sort((a, b) => {
+    if (a === b) return 0;
+    if (a === localMachine) return -1;
+    if (b === localMachine) return 1;
+    return (newest.get(b) - newest.get(a)) || String(a).localeCompare(String(b));
+  });
+  return new Map(ranked.map((machine, rank) => [machine, rank]));
+}
+
+/**
+ * Deduplicate sessions by sessionId. Across machines the higher-precedence
+ * source wins; within one machine the latest lastTimestamp wins. Sessions
+ * without a sessionId pass through unchanged.
+ *
+ * Returns the survivors plus every cross-machine duplicate that was dropped —
+ * session ids are UUIDs, so sharing one across machines means a transcript
+ * history was copied, which the caller should surface rather than bury.
+ */
+function dedupeBySessionId(sessions, { localMachine = null } = {}) {
+  const precedence = sourcePrecedence(sessions, localMachine);
   const seen = new Map();
+  const duplicates = [];
 
   for (const s of sessions) {
     // Sessions without sessionId pass through
@@ -305,12 +334,17 @@ function dedupeBySessionId(sessions) {
     }
 
     const existing = seen.get(s.sessionId);
-    const newTimestamp = s.lastTimestamp || 0;
-    const existingTimestamp = existing ? (existing.lastTimestamp || 0) : -Infinity;
-
-    if (!existing || newTimestamp > existingTimestamp) {
+    if (!existing) {
       seen.set(s.sessionId, s);
+      continue;
     }
+
+    const winner = preferredSession(existing, s, precedence);
+    if (existing.machine !== s.machine) {
+      const loser = winner === s ? existing : s;
+      duplicates.push({ sessionId: s.sessionId, machine: loser.machine, shadowedBy: winner.machine });
+    }
+    seen.set(s.sessionId, winner);
   }
 
   // Return deduped entries + all sessions without sessionId
@@ -321,7 +355,14 @@ function dedupeBySessionId(sessions) {
     }
   }
 
-  return deduped;
+  return { sessions: deduped, duplicates };
+}
+
+function preferredSession(a, b, precedence) {
+  const rankA = precedence.get(a.machine);
+  const rankB = precedence.get(b.machine);
+  if (rankA !== rankB) return rankA < rankB ? a : b;
+  return (b.lastTimestamp || 0) > (a.lastTimestamp || 0) ? b : a;
 }
 
 /**
