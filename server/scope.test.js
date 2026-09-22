@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { scopedSessions, groupProjects, machinesSummary } = require('./scope');
+const { scopedSessions, groupProjects, machinesSummary, duplicateReport } = require('./scope');
 
 function sess(id, { machine = null, key = 'workspace/app', ts = '2026-03-25T10:00:00Z', cost = 1, subs = 0 } = {}) {
   return {
@@ -22,14 +22,32 @@ describe('scopedSessions', () => {
     sess('3', { machine: 'a', key: 'workspace/other', ts: '2026-01-01T00:00:00Z' }),
     sess('3', { machine: 'b', key: 'workspace/other', ts: '2026-01-02T00:00:00Z' })
   ];
-  it('dedupes by sessionId keeping the latest', () => {
-    const out = scopedSessions(all, {});
+  it('dedupes by sessionId, crediting the local machine', () => {
+    const out = scopedSessions(all, {}, 'b');
     assert.equal(out.length, 3);
     assert.equal(out.find(s => s.sessionId === '3').machine, 'b');
   });
   it('composes project, machine and range filters', () => {
     assert.deepEqual(scopedSessions(all, { project: 'workspace/app', machine: 'b' }).map(s => s.sessionId), ['2']);
     assert.deepEqual(scopedSessions(all, { from: '2026-03-01', to: '2026-03-31' }).map(s => s.sessionId).sort(), ['1', '2']);
+  });
+});
+
+describe('duplicateReport', () => {
+  it('returns [] when no sessionId is shared across machines', () => {
+    assert.deepEqual(duplicateReport([sess('1', { machine: 'a' }), sess('2', { machine: 'b' })], 'a'), []);
+  });
+
+  it('counts shared sessions per shadowed machine, busiest first', () => {
+    const sessions = [
+      sess('1', { machine: 'stale' }), sess('1', { machine: 'live' }),
+      sess('2', { machine: 'stale' }), sess('2', { machine: 'live' }),
+      sess('3', { machine: 'other' }), sess('3', { machine: 'live' })
+    ];
+    assert.deepEqual(duplicateReport(sessions, 'live'), [
+      { machine: 'stale', shadowedBy: 'live', sessionCount: 2 },
+      { machine: 'other', shadowedBy: 'live', sessionCount: 1 }
+    ]);
   });
 });
 

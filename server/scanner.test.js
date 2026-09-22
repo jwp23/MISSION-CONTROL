@@ -392,7 +392,7 @@ describe('dedupeBySessionId', () => {
       { sessionId: 'sess-a', lastTimestamp: 2000, data: 'new' }
     ];
 
-    const deduped = scanner.dedupeBySessionId(sessions);
+    const { sessions: deduped } = scanner.dedupeBySessionId(sessions);
     assert.equal(deduped.length, 1);
     assert.equal(deduped[0].lastTimestamp, 2000);
     assert.equal(deduped[0].data, 'new');
@@ -405,7 +405,7 @@ describe('dedupeBySessionId', () => {
       { sessionId: 'sess-c', lastTimestamp: 2000 }
     ];
 
-    const deduped = scanner.dedupeBySessionId(sessions);
+    const { sessions: deduped } = scanner.dedupeBySessionId(sessions);
     assert.equal(deduped.length, 3);
     assert.ok(deduped.find(s => s.sessionId === 'sess-a'));
     assert.ok(deduped.find(s => s.sessionId === 'sess-b'));
@@ -419,7 +419,7 @@ describe('dedupeBySessionId', () => {
       { data: 'no-id-2' }
     ];
 
-    const deduped = scanner.dedupeBySessionId(sessions);
+    const { sessions: deduped } = scanner.dedupeBySessionId(sessions);
     assert.equal(deduped.length, 3);
     assert.ok(deduped.find(s => !s.sessionId && s.data === 'no-id-1'));
     assert.ok(deduped.find(s => !s.sessionId && s.data === 'no-id-2'));
@@ -433,7 +433,7 @@ describe('dedupeBySessionId', () => {
       { sessionId: 'sess-x', lastTimestamp: 2000, label: 'second' }
     ];
 
-    const deduped = scanner.dedupeBySessionId(sessions);
+    const { sessions: deduped } = scanner.dedupeBySessionId(sessions);
     assert.equal(deduped.length, 1);
     assert.equal(deduped[0].lastTimestamp, 3000);
     assert.equal(deduped[0].label, 'third');
@@ -445,10 +445,77 @@ describe('dedupeBySessionId', () => {
       { sessionId: 'sess-y', lastTimestamp: 100, label: 'has-timestamp' }
     ];
 
-    const deduped = scanner.dedupeBySessionId(sessions);
+    const { sessions: deduped } = scanner.dedupeBySessionId(sessions);
     assert.equal(deduped.length, 1);
     assert.equal(deduped[0].lastTimestamp, 100);
     assert.equal(deduped[0].label, 'has-timestamp');
+  });
+
+  it('reports nothing when every sessionId is unique', () => {
+    const { duplicates } = scanner.dedupeBySessionId([
+      { sessionId: 'sess-a', machine: 'alpha', lastTimestamp: 1000 },
+      { sessionId: 'sess-b', machine: 'beta', lastTimestamp: 1000 }
+    ]);
+    assert.deepEqual(duplicates, []);
+  });
+
+  it('credits the local machine when a copy ties on every timestamp', () => {
+    // A mirrored transcript copy: same ids, same content-derived timestamps.
+    const sessions = [
+      { sessionId: 'sess-a', machine: 'alpha-copy', lastTimestamp: 1000, modified: 500 },
+      { sessionId: 'sess-a', machine: 'zeta-live', lastTimestamp: 1000, modified: 500 }
+    ];
+
+    const { sessions: deduped, duplicates } = scanner.dedupeBySessionId(sessions, { localMachine: 'zeta-live' });
+    assert.equal(deduped.length, 1);
+    assert.equal(deduped[0].machine, 'zeta-live');
+    assert.deepEqual(duplicates, [{ sessionId: 'sess-a', machine: 'alpha-copy', shadowedBy: 'zeta-live' }]);
+  });
+
+  it('credits the machine with the newest session when neither source is local', () => {
+    const sessions = [
+      { sessionId: 'shared', machine: 'alpha-copy', lastTimestamp: 1000 },
+      { sessionId: 'shared', machine: 'zeta-live', lastTimestamp: 1000 },
+      { sessionId: 'later', machine: 'zeta-live', lastTimestamp: 9000 }
+    ];
+
+    const { sessions: deduped } = scanner.dedupeBySessionId(sessions, { localMachine: 'some-third-box' });
+    assert.equal(deduped.find(s => s.sessionId === 'shared').machine, 'zeta-live');
+  });
+
+  it('applies source precedence to every shared session, not per-session timestamps', () => {
+    // alpha-copy holds a stale copy whose individual rows can look newer;
+    // precedence is decided once per source, so zeta-live takes them all.
+    const sessions = [
+      { sessionId: 'a', machine: 'alpha-copy', lastTimestamp: 5000 },
+      { sessionId: 'a', machine: 'zeta-live', lastTimestamp: 4000 },
+      { sessionId: 'b', machine: 'alpha-copy', lastTimestamp: 3000 },
+      { sessionId: 'b', machine: 'zeta-live', lastTimestamp: 3000 }
+    ];
+
+    const { sessions: deduped, duplicates } = scanner.dedupeBySessionId(sessions, { localMachine: 'zeta-live' });
+    assert.deepEqual(deduped.map(s => s.machine), ['zeta-live', 'zeta-live']);
+    assert.equal(duplicates.length, 2);
+  });
+
+  it('resolves deterministically when no machine is local and all timestamps tie', () => {
+    const sessions = [
+      { sessionId: 'sess-a', machine: 'zeta', lastTimestamp: 1000, modified: 1 },
+      { sessionId: 'sess-a', machine: 'alpha', lastTimestamp: 1000, modified: 1 }
+    ];
+
+    const forward = scanner.dedupeBySessionId(sessions, { localMachine: null });
+    const reversed = scanner.dedupeBySessionId([...sessions].reverse(), { localMachine: null });
+    assert.equal(forward.sessions[0].machine, 'alpha');
+    assert.equal(reversed.sessions[0].machine, 'alpha');
+  });
+
+  it('does not report same-machine duplicates as a mirror problem', () => {
+    const { duplicates } = scanner.dedupeBySessionId([
+      { sessionId: 'sess-a', machine: 'alpha', lastTimestamp: 1000 },
+      { sessionId: 'sess-a', machine: 'alpha', lastTimestamp: 2000 }
+    ]);
+    assert.deepEqual(duplicates, []);
   });
 });
 
