@@ -1167,6 +1167,8 @@ function App() {
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [machines, setMachines] = useState([]);
 
+  const localMachine = globalBeads?.machine ?? null;
+
   // One query-string builder so every fetch carries the same scope
   const scopeQS = (sep, { project = true, machine = true, range = true } = {}) => {
     const parts = [];
@@ -1241,13 +1243,23 @@ function App() {
     load(`/api/beads${scopeQS('?', { machine: false })}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
     load(`/api/beads${scopeQS('?', { project: false, machine: false })}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
 
-    const lm = globalBeads?.machine;
-    if (lm) {
-      load(`/api/stats?machine=${encodeURIComponent(lm)}${scopeQS('&', { project: false, machine: false })}`, setLocalStats);
-      load(`/api/stats?machine=${encodeURIComponent(lm)}${scopeQS('&', { machine: false })}`, setLocalProjectStats);
+    return () => { cancelled = true; };
+  }, [selectedProject, selectedMachine, timeRange.from, timeRange.to]);
+
+  // Local-machine spend: separate effect so its dependency on globalBeads
+  // (resolved after the main effect's /api/beads fetch) doesn't re-run the
+  // fetches above on every mount.
+  useEffect(() => {
+    let cancelled = false;
+    const load = (url, setter) =>
+      fetch(url).then(r => r.json()).then(data => { if (!cancelled) setter(data); }).catch(console.error);
+
+    if (localMachine) {
+      load(`/api/stats?machine=${encodeURIComponent(localMachine)}${scopeQS('&', { project: false, machine: false })}`, setLocalStats);
+      load(`/api/stats?machine=${encodeURIComponent(localMachine)}${scopeQS('&', { machine: false })}`, setLocalProjectStats);
     } else { setLocalStats(null); setLocalProjectStats(null); }
     return () => { cancelled = true; };
-  }, [selectedProject, selectedMachine, timeRange.from, timeRange.to, globalBeads?.machine]);
+  }, [localMachine, selectedProject, timeRange.from, timeRange.to]);
 
   // Search
   useEffect(() => {
@@ -1337,7 +1349,6 @@ function App() {
     );
   }
 
-  const localMachine = globalBeads?.machine ?? null;
   const localPaths = Object.fromEntries(projects.map(p => [p.key, p.localPath]));
 
   const tableProps = {
