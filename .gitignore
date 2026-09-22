@@ -46,3 +46,4 @@ config.json
 *.pem
 *.key
 credentials.json
+.worktrees/
