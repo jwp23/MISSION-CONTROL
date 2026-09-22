@@ -46,7 +46,6 @@ Edit `config.json` with your paths:
 
 ```json
 {
-  "scanPath": "/Users/you/projects",
   "claudeDir": "/Users/you/.claude",
   "port": 9000
 }
@@ -54,7 +53,6 @@ Edit `config.json` with your paths:
 
 | Field | What it is |
 |-------|-----------|
-| `scanPath` | The parent directory containing your Claude Code projects. MISSION-CONTROL scans this recursively for any folder with a `.claude/` subdirectory. |
 | `claudeDir` | Path to your `~/.claude` directory where Claude Code stores session data. Usually `~/.claude`. |
 | `port` | Server port. Default `9000`. |
 
@@ -76,13 +74,7 @@ Then open [http://localhost:9000](http://localhost:9000).
 
 ### Project Discovery
 
-MISSION-CONTROL scans your `scanPath` for directories containing a `.claude/` folder. Each discovered project maps to Claude Code's session storage convention:
-
-```
-~/projects/my-app/        ->  ~/.claude/projects/-Users-you-projects-my-app/
-```
-
-Session data lives in `.jsonl` files inside those encoded directories. MISSION-CONTROL reads and parses them on the fly, with caching based on file modification time.
+MISSION-CONTROL reads every session transcript under `~/.claude/projects`. A session's project is its launch directory relative to your home, so `~/workspace/foo` and a worktree at `~/workspace/foo/.worktrees/bar` both count toward `workspace/foo`. Sessions launched outside your home directory appear under `(temp)`.
 
 ### Session Parsing
 
@@ -134,6 +126,14 @@ Clicking "Launch" on a session opens your configured terminal and resumes the Cl
 | `zeditor` | Any | Opens/focuses project in Zed; resume command available via "Copy Cmd" button |
 
 For terminals that don't support executing a command directly (cosmic-term, zeditor), the Launch button transitions to "Copy Cmd" so you can paste `claude --resume <id>` into the terminal yourself.
+
+## Multiple machines (agent-downlink)
+
+If [agent-downlink](https://github.com/jwp23/agent-downlink) is installed, MISSION-CONTROL reads every machine's sessions from its mirror (`mirror/<machine>/claude-code/projects/`), including this machine's. A machine picker appears in the top bar, the session table gains a Machine column, and the rollup shows a By Machine breakdown. Data is as fresh as the last downlink run.
+
+The same project on two machines is matched by its path relative to home, so `~/workspace/foo` on both machines is one project.
+
+Beads are read from the local checkout only, so `$/Bead` is labelled "(this machine)" and divides this machine's spend by locally counted closures.
 
 ## Dashboard Features
 

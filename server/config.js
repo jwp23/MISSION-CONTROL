@@ -15,7 +15,6 @@ function expandHome(p) {
 function load() {
   const filePath = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : EXAMPLE_PATH;
   config = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  config.scanPath = expandHome(config.scanPath);
   config.claudeDir = expandHome(config.claudeDir);
   return config;
 }

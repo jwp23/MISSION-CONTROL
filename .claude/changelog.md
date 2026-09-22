@@ -9,6 +9,14 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** `scanPath` is removed from `config.json`. Projects are discovered from session transcripts, not by scanning a directory; every session under `~/.claude/projects` now counts, including worktrees and sessions outside the old `scanPath`. Totals will rise on upgrade. A leftover `scanPath` key is ignored.
+
+### Added
+
+- Multi-machine sessions via the agent-downlink mirror: machine picker, Machine column, By Machine rollup, `$/Bead (this machine)`.
+
 ### Fixed
 
 - SonarQube quality gate cleanup — all 107 open findings + 1 security hotspot resolved (PR #4)
