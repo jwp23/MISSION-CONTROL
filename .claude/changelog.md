@@ -19,6 +19,7 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ### Fixed
 
+- Cross-machine duplicate sessions are surfaced instead of silently dropped (MISSION-CONTROL-5ha). Precedence is now decided once per source — this machine first, then the machine with the most recent session, then by name — so a copied transcript history no longer wins ties and misattributes another machine's spend. A banner names the machine holding the copy and points at the agent-downlink mirror; `GET /api/duplicates` exposes the same report.
 - SonarQube quality gate cleanup for multi-machine sources (PR #6): 3× S8476 same-origin percent-encoded client URLs in `public/app.js`, 1× S5145 log message built from `agent-downlink` config content read from the local filesystem (same trust boundary as the process) — all Accepted-with-rationale in SonarCloud, consistent with the PR #4 precedent below.
 - SonarQube quality gate cleanup — all 107 open findings + 1 security hotspot resolved (PR #4)
   - Path-injection BLOCKERs in `server/scanner.js` fixed via `resolveWithin()` containment (sessionsDir within the Claude projects dir, scanPath within `$HOME`), with traversal tests; note: a scanPath outside `$HOME` now yields no projects

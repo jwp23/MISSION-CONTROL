@@ -135,6 +135,8 @@ The same project on two machines is matched by its path relative to home, so `~/
 
 Beads are read from the local checkout only, so `$/Bead` is labelled "(this machine)" and divides this machine's spend by locally counted closures.
 
+Session ids are UUIDs, so two machines sharing one is never coincidence — it means a transcript history was copied between them (a migration, a restored backup, two downlink configs on one host). MISSION-CONTROL credits those sessions to a single machine, preferring this one and otherwise the machine with the most recent session, and shows a banner naming the copy. The fix is to remove the stale machine from your agent-downlink mirror.
+
 ## Dashboard Features
 
 ### Top Bar
@@ -179,6 +181,8 @@ All endpoints return JSON.
 | `GET` | `/api/stats` | Global aggregate statistics |
 | `GET` | `/api/daily-stats` | Daily token/cost breakdown (filterable by project) |
 | `GET` | `/api/monthly-stats` | Monthly token/cost breakdown (filterable by project) |
+| `GET` | `/api/machines` | Per-machine totals; `[]` when there is a single source |
+| `GET` | `/api/duplicates` | Machines whose transcripts are a copy of another machine's |
 | `GET` | `/api/active` | Currently running Claude Code sessions |
 | `GET` | `/api/wip` | Sessions marked as WIP |
 | `GET` | `/api/config` | Current configuration |
