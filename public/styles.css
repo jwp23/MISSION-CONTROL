@@ -156,6 +156,35 @@ body {
   border-color: var(--border-active);
 }
 
+/* Mirror Warning */
+.mirror-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(255, 107, 53, 0.08);
+  border-bottom: 1px solid var(--amber);
+  color: var(--text-primary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.mirror-warning-tag {
+  color: var(--amber);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.mirror-warning-body > div + div {
+  margin-top: 4px;
+}
+
+.mirror-warning strong {
+  color: var(--amber);
+  font-weight: 600;
+}
+
 /* Main Layout */
 .main-layout {
   display: flex;

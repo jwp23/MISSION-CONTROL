@@ -576,6 +576,27 @@ function beadLabel(beads) { return beads?.machine ? '$/Bead (this machine)' : '$
 
 // --- Components ---
 
+// Session ids are UUIDs, so one shared across machines is never coincidence: a
+// transcript history was copied. The dashboard credits the copy's sessions to
+// the machine that owns them; the copy itself has to be fixed in the mirror.
+function MirrorWarning({ duplicates }) {
+  if (!duplicates || duplicates.length === 0) return null;
+  return (
+    <div className="mirror-warning" role="status">
+      <span className="mirror-warning-tag">MIRROR</span>
+      <div className="mirror-warning-body">
+        {duplicates.map(d => (
+          <div key={`${d.machine}/${d.shadowedBy}`}>
+            <strong>{d.machine}</strong> holds a copy of {d.sessionCount.toLocaleString()}{' '}
+            {d.sessionCount === 1 ? 'session' : 'sessions'} belonging to <strong>{d.shadowedBy}</strong>,
+            so its totals are not its own. Remove {d.machine} from your agent-downlink mirror.
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine, localSpend }) {
   return (
     <div className="top-bar">
@@ -1166,6 +1187,7 @@ function App() {
   const [projectStats, setProjectStats] = useState(null);
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [machines, setMachines] = useState([]);
+  const [duplicates, setDuplicates] = useState([]);
 
   const localMachine = globalBeads?.machine ?? null;
 
@@ -1189,8 +1211,9 @@ function App() {
         setProjects(data);
         setLoading(false);
         setSelectedProject(prev => prev && data.some(p => p.key === prev) ? prev : '__all__');
-        // Now that projects are loaded (cache populated), fetch wip
+        // Now that projects are loaded (cache populated), fetch wip and mirror health
         fetch('/api/wip').then(r => r.json()).then(setWipSessions).catch(console.error);
+        fetch('/api/duplicates').then(r => r.json()).then(setDuplicates).catch(() => setDuplicates([]));
       })
       .catch(err => { console.error('Failed to load projects:', err); setLoading(false); });
   }, [selectedMachine]);
@@ -1394,6 +1417,7 @@ function App() {
         timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads}
         machines={machines} selectedMachine={selectedMachine} onSelectMachine={(m) => { setSearchResults(null); setSelectedMachine(m); }}
         localSpend={localStats?.totalCost} />
+      <MirrorWarning duplicates={duplicates} />
       <div className="main-layout">
         <Sidebar
           projects={projects}
