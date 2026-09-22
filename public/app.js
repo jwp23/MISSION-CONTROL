@@ -1134,18 +1134,20 @@ function App() {
   const [machines, setMachines] = useState([]);
 
   // One query-string builder so every fetch carries the same scope
-  const scopeQS = (sep, { project = true, machine = true } = {}) => {
+  const scopeQS = (sep, { project = true, machine = true, range = true } = {}) => {
     const parts = [];
     if (project && selectedProject && selectedProject !== '__all__') parts.push(`project=${encodeURIComponent(selectedProject)}`);
     if (machine && selectedMachine) parts.push(`machine=${encodeURIComponent(selectedMachine)}`);
-    const range = rangeQuery(timeRange, '');
-    if (range) parts.push(range);
+    if (range) {
+      const rangePart = rangeQuery(timeRange, '');
+      if (rangePart) parts.push(rangePart);
+    }
     return parts.length ? sep + parts.join('&') : '';
   };
 
   // Load projects on mount and when the machine scope changes
   useEffect(() => {
-    fetch(`/api/projects${scopeQS('?', { project: false })}`)
+    fetch(`/api/projects${scopeQS('?', { project: false, range: false })}`)
       .then(r => r.json())
       .then(data => {
         setProjects(data);
@@ -1220,7 +1222,7 @@ function App() {
         .catch(console.error);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [searchQuery, timeRange.from, timeRange.to]);
+  }, [searchQuery, selectedMachine, timeRange.from, timeRange.to]);
 
   const handleSort = useCallback((field, dir) => {
     setSortField(field);
