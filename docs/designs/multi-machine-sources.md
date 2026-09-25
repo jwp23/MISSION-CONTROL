@@ -1,17 +1,20 @@
 # Multi-Machine Session Sources
 
-How MISSION-CONTROL reads Claude Code sessions from more than one machine and
-presents them as one dashboard. Decisions and rejected alternatives live in
-ADR-001, ADR-002 and `context/decisions/beads-local-only.md`; this document
-describes the design as it stands.
+How MISSION-CONTROL reads Claude Code sessions from more than one machine,
+and Cowork sessions from the Claude Desktop app, and presents them as one
+dashboard. Decisions and rejected alternatives live in ADR-001, ADR-002,
+ADR-003 and `context/decisions/beads-local-only.md`; this document describes
+the design as it stands.
 
 ## Overview
 
-Sessions come from a list of *sources*. Each source is one machine's
-`projects/` directory in Claude Code's native layout. With agent-downlink
-installed, the list has one entry per machine in its mirror, including this
-machine. Without it, the list is the single local `~/.claude/projects` and the
-machine dimension is absent from the UI.
+Sessions come from a list of *sources*. A source is either one machine's
+`projects/` directory in Claude Code's native layout, or this machine's
+Claude Desktop Cowork directory. With agent-downlink installed, the list has
+one entry per machine in its mirror, including this machine. Without it, the
+list is the single local `~/.claude/projects` and the machine dimension is
+absent from the UI. When the Cowork directory exists, one Cowork source is
+appended in either case.
 
 ```
 ~/.config/agent-downlink/config.toml ──▶ sources.js ──▶ [{machine, projectsDir}, …]
@@ -25,12 +28,23 @@ machine dimension is absent from the UI.
                                   sessionCache ──▶ scopedSessions(query) ──▶ API
 ```
 
+```
+~/Library/Application Support/Claude/local-agent-mode-sessions/
+  <account>/<org>/local_<id>-….json          title, folders, cliSessionId
+  <account>/<org>/<id>/.claude/projects/session/<uuid>.jsonl
+                                              │
+                            scanner.discoverCoworkSessions(source)
+                                              │
+              parsed sessions tagged {source: 'cowork', machine, projectKey}
+```
+
 Data freshness equals the last agent-downlink run. Live-only concerns
 (active-session PIDs, session restore) still read the local `~/.claude`.
+Cowork transcripts are read live from the Desktop app's directory.
 
 ## Sources (`server/sources.js`)
 
-`resolveSources()` returns `{ sources: [{ machine, projectsDir }], localMachine }`.
+`resolveSources()` returns `{ sources: [{ kind?, machine, projectsDir }], localMachine }`.
 
 1. If `~/.config/agent-downlink/config.toml` exists, parse it with
    `smol-toml`. Read `mirror` and `machine`; both must be strings.
@@ -41,6 +55,12 @@ Data freshness equals the last agent-downlink run. Live-only concerns
    missing mirror, no machine folders — log one line and return the fallback.
 
 Fallback and no-downlink: `[{ machine: null, projectsDir: ~/.claude/projects }]`.
+
+5. If `~/Library/Application Support/Claude/local-agent-mode-sessions` exists
+   (`opts.coworkDir` in tests), append
+   `{ kind: 'cowork', machine: localMachine, projectsDir: <that dir> }`.
+   This runs after the fallback too, so a broken downlink config still
+   yields local plus Cowork. Claude Code sources carry no `kind`.
 
 `localMachine` is the config's `machine` when the mirror is in use, otherwise
 `null`. Resolution runs per `/api/projects` request, like discovery today, so
@@ -57,10 +77,11 @@ The parser records the first `cwd` seen in a transcript as `session.cwd`.
 Later values are ignored so a session that `cd`s into a subdirectory stays
 with its launch directory.
 
-`discoverSessions(sources)` replaces `discoverProjects()`. For each source it
-lists every `projects/<encoded>/` directory, runs the existing
+`discoverSessions(sources)` replaces `discoverProjects()`. For each Claude
+Code source it lists every `projects/<encoded>/` directory, runs the existing
 `listSessionFiles` and subagent merge, and tags each parsed session with
-`machine` and `projectKey`. `resolveWithin` guards paths against the source's
+`machine` and `projectKey`. A source with `kind: 'cowork'` is routed to
+`discoverCoworkSessions` instead (below). `resolveWithin` guards paths against the source's
 `projectsDir` rather than a fixed `~/.claude/projects`. The cache key includes
 the machine so identical session ids from two mirrors never collide;
 `dedupeBySessionId` remains as a safety net for a transcript copied between
@@ -79,13 +100,40 @@ machines.
 | `/home/u/.claude` | `.claude` |
 | `/private/tmp/…`, `/tmp/…`, anything else | `(temp)` |
 
+| Cowork session, no attached folder | `(cowork)` |
+
 Home is detected by the `/home/<user>/` and `/Users/<user>/` prefixes, not
 `os.homedir()`, because the other machine's home differs. `projectName` is the
 key's last segment; when two keys share a basename the full key is shown.
 
 `localPath(key)` is `~/<key>` when that directory exists on this machine; beads
-and restore need it. `scanPath` is removed from `config.json` (a breaking
+and restore need it. It is null for `(temp)` and `(cowork)`. `scanPath` is removed from `config.json` (a breaking
 config change); a leftover key is ignored.
+
+## Cowork sessions (`server/scanner.js`)
+
+`discoverCoworkSessions(source)` walks `<projectsDir>/<account>/<org>/` and,
+for each `local_*.json` it can parse, builds a project descriptor whose
+`sessionsDir` is `<org>/<id>/.claude/projects/session` where `<id>` is the
+first eight characters of the file's `sessionId` after the `local_` prefix.
+That descriptor goes through the same `getProjectSessions` path as a Claude
+Code project, so parsing, subagent merge and the mtime cache are shared.
+Each parsed session is then overlaid with the metadata:
+
+| Field | Value |
+|-------|-------|
+| `source` | `'cowork'` |
+| `sessionName` | transcript name if present, else `meta.title` |
+| `cwd` | `meta.userSelectedFolders[0]`, or null |
+| `projectKey` | `projectKey(cwd)`, or `(cowork)` when there is no folder |
+
+The transcript's own `cwd` is the VM's `/private/var/empty` and is never
+used. A metadata file that is missing, unparsable or lacks a string
+`sessionId` skips that session with one log line. A metadata file whose
+transcript folder does not exist yields nothing. The `machine` tag is the
+source's, so machine filtering and the By Machine rollup include Cowork
+sessions on the machine they ran on. Session ids are UUIDs, so
+`dedupeBySessionId` needs no change.
 
 ## API (`server/index.js`)
 
@@ -101,7 +149,10 @@ of that chain.
 | `GET /api/sessions/all`, `/api/stats`, `/api/daily-stats`, `/api/monthly-stats`, `/api/search` | Use `scopedSessions`. Rows gain `machine`, `projectKey`; `encodedPath`, `projectPath` are dropped. `projectCount` is distinct keys in scope. |
 | `GET /api/machines` | New. `[{ machine, sessionCount, aggregate }]` for the current project and range. `[]` with a single unnamed source. |
 | `GET /api/beads` | Matches `?project=` via `localPath`. Response gains `machine: localMachine()`. |
-| `GET /api/wip`, `PUT …/status`, `PUT …/summary`, `POST /api/restore/:id`, `GET /api/active` | Unchanged. Overrides key on session id, which is a UUID. |
+| `POST /api/restore/:id` | Returns 400 `Cowork sessions cannot be resumed from the dashboard` when the cached session's `source` is `cowork`. |
+| `GET /api/wip`, `PUT …/status`, `PUT …/summary`, `GET /api/active` | Unchanged. Overrides key on session id, which is a UUID. |
+
+Session rows gain `source` (`'cowork'` or undefined).
 
 `?project=` carries a project key, not an encoded path. No compatibility
 shim for the old parameter.
@@ -117,7 +168,9 @@ shim for the old parameter.
   The active dot compares against `p.localPath`.
 - **Session table**: a `Machine` column (prio 3, collapses first) when
   machines exist. LAUNCH renders only when `s.machine` is the local machine
-  or null and the project has a `localPath`; restore receives `localPath`.
+  or null, the project has a `localPath`, and `s.source` is not `cowork`;
+  restore receives `localPath`. Cowork rows show a `COWORK` pill before the
+  session name in the summary cell.
 - **Rollup**: a `By Machine` block after `Time` — sessions, tokens, subagents,
   cost per machine for the current project and range, hidden when empty,
   always listing every machine.
@@ -140,6 +193,8 @@ is removed from the config.
 ## Error handling
 
 - Downlink config problems degrade to the local source with one log line.
+- A missing Cowork directory adds no source and logs nothing; a bad
+  `local_*.json` skips one session with one log line.
 - A transcript that fails to parse is logged and skipped, as today.
 - A partial trailing line in a mid-sync transcript is tolerated by the parser
   (verified: 3,205 mirror files parsed with zero failures).
@@ -154,9 +209,11 @@ requests cheap. No index or database.
 ## Testing
 
 Server: unit tests for `resolveSources` (present, absent, malformed, outside
-home, empty mirror), `projectKey` (the table above), `scopedSessions`
-(filter composition), `/api/machines` shape, and `/api/beads` machine
-labelling.
+home, empty mirror, Cowork dir present and absent), `projectKey` (the table
+above), `discoverCoworkSessions` (fixture with metadata and transcript;
+title, folder, no folder, malformed metadata, missing transcript),
+`scopedSessions` (filter composition), `/api/machines` shape, and
+`/api/beads` machine labelling.
 
 Frontend has no test harness. Acceptance is a headless Playwright pass at
 fixed viewports against the real mirror: picker shows two machines;
