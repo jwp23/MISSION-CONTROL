@@ -16,6 +16,7 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 ### Added
 
 - Multi-machine sessions via the agent-downlink mirror: machine picker, Machine column, By Machine rollup, `$/Bead (this machine)`.
+- Top bar shows Claude plan usage (five-hour and seven-day limits) from Claude Desktop's `plan-usage-history.json`; hidden when the app has recorded nothing.
 
 ### Fixed
 
@@ -32,8 +33,6 @@ Purpose: Running log of all notable changes, features, and workflow updates.
   - Accepted-with-rationale in SonarCloud: `beads.js` S4036 (intentional PATH lookup of `bd`), 2× S6549 (existence checks on contained paths), 2× S8476 (same-origin, percent-encoded client URLs)
 
 ### Added
-
-- Top bar shows Claude plan usage (five-hour and seven-day limits) from Claude Desktop's `plan-usage-history.json`; hidden when the app has recorded nothing.
 
 - Story 6: Dynamic Pricing Service — fetches Claude API pricing from LiteLLM at startup and daily refresh
   - `server/pricing.js` fetches community pricing JSON at startup and every 24h while running
