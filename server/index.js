@@ -30,7 +30,7 @@ const scope = require('./scope');
 const historyIndexes = new Map();
 async function loadHistoryIndexes(list) {
   for (const src of list) {
-    if (historyIndexes.has(src.machine)) continue;
+    if (src.kind === 'cowork' || historyIndexes.has(src.machine)) continue;
     const historyPath = path.join(path.dirname(src.projectsDir), 'history.jsonl');
     try {
       historyIndexes.set(src.machine, await parser.buildHistoryIndex(historyPath));
@@ -97,7 +97,8 @@ function sessionRow(s) {
     statusNote: ss ? ss.note : null,
     machine: s.machine,
     projectKey: s.projectKey,
-    projectName: s.projectName
+    projectName: s.projectName,
+    source: s.source
   };
 }
 
@@ -280,6 +281,12 @@ app.post('/api/restore/:sessionId', async (req, res) => {
   try {
     const { cwd } = req.body;
     if (!cwd) return res.status(400).json({ error: 'cwd is required' });
+
+    // Cowork sessions ran inside the Desktop app's VM; there is no CLI resume for them
+    const session = cachedSessions().find(s => s.sessionId === req.params.sessionId);
+    if (session?.source === 'cowork') {
+      return res.status(400).json({ error: 'Cowork sessions cannot be resumed from the dashboard' });
+    }
 
     const terminal = config.get().terminal || 'ghostty';
     const result = await restore.restoreSession(req.params.sessionId, cwd, terminal);
