@@ -11,14 +11,12 @@ function calculateMessageCost(usage, model, timestampMs) {
   const perMillion = 1_000_000;
 
   const cacheWriteTotal = usage.cache_creation_input_tokens || 0;
-  const oneHourWrite = Math.min(usage.cache_creation?.
-    ephemeral_1h_input_tokens || 0, cacheWriteTotal);
+  const oneHourWrite = Math.min(usage.cache_creation?.ephemeral_1h_input_tokens || 0, cacheWriteTotal);
   const fiveMinuteWrite = cacheWriteTotal - oneHourWrite;
 
   const inputCost = ((usage.input_tokens || 0) / perMillion) * pricing.input;
   const outputCost = ((usage.output_tokens || 0) / perMillion) * pricing.output;
-  const cacheReadCost = ((usage.cache_read_input_tokens || 0) /
-    perMillion) * pricing.cacheRead;
+  const cacheReadCost = ((usage.cache_read_input_tokens || 0) / perMillion) * pricing.cacheRead;
   const cacheWriteCost = (fiveMinuteWrite / perMillion) * pricing.cacheWrite
     + (oneHourWrite / perMillion) * pricing.input * 2;
 
