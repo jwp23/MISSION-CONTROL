@@ -7,6 +7,7 @@ const restore = require('./restore');
 const sessionState = require('./session-state');
 const timerange = require('./timerange');
 const beads = require('./beads');
+const planUsage = require('./plan-usage');
 
 const app = express();
 app.disable('x-powered-by');
@@ -274,6 +275,11 @@ app.get('/api/active', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Claude Desktop's latest rate-limit reading; null when the app has none
+app.get('/api/plan-usage', (req, res) => {
+  res.json(planUsage.readPlanUsage());
 });
 
 // Restore a session in the configured terminal
