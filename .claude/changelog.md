@@ -9,6 +9,10 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 
 ## [Unreleased]
 
+### Fixed
+
+- One-hour prompt-cache writes were billed at the five-minute rate, undercounting every session that used the one-hour TTL (all Cowork sessions and hundreds of Claude Code ones). Cache writes are now split by TTL from `usage.cache_creation`; one-hour tokens bill at 2× base input. Totals rise on upgrade.
+
 ### Changed
 
 - **BREAKING:** `scanPath` is removed from `config.json`. Projects are discovered from session transcripts, not by scanning a directory; every session under `~/.claude/projects` now counts, including worktrees and sessions outside the old `scanPath`. Totals will rise on upgrade. A leftover `scanPath` key is ignored.

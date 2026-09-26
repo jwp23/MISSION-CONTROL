@@ -26,4 +26,43 @@ describe('date-aware message cost', () => {
     const usage = { input_tokens: 1_000_000, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     assert.equal(calculateMessageCost(usage, 'claude-sonnet-5'), 3);
   });
+
+  describe('cache writes by TTL', () => {
+    const at = Date.parse('2026-08-01');
+
+    it('bills one-hour cache writes at twice the base input rate', () => {
+      const usage = { input_tokens: 0, output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 1_000_000,
+        cache_creation: { ephemeral_5m_input_tokens: 0,
+          ephemeral_1h_input_tokens: 1_000_000 } };
+      assert.equal(calculateMessageCost(usage, 'claude-sonnet-5', at), 4);
+    });
+
+    it('splits a mixed write between the two rates', () => {
+      const usage = { input_tokens: 0, output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 1_000_000,
+        cache_creation: { ephemeral_5m_input_tokens: 600_000,
+          ephemeral_1h_input_tokens: 400_000 } };
+      // 0.6M × 2.5 + 0.4M × 4
+      assert.equal(calculateMessageCost(usage, 'claude-sonnet-5', at), 3.1);
+    });
+
+    it('prices a usage block without the breakdown at the five-minute rate', () => {
+      const usage = { input_tokens: 0, output_tokens: 0,
+        cache_read_input_tokens: 0, cache_creation_input_tokens: 1_000_000 };
+      assert.equal(calculateMessageCost(usage, 'claude-sonnet-5', at), 2.5);
+    });
+
+    it('reproduces the cost Claude Code recorded for a Cowork session', () => {
+      const usage = { input_tokens: 2, output_tokens: 1571,
+        cache_read_input_tokens: 43779,
+        cache_creation_input_tokens: 78071,
+        cache_creation: { ephemeral_5m_input_tokens: 0,
+          ephemeral_1h_input_tokens: 78071 } };
+      const cost = calculateMessageCost(usage, 'claude-sonnet-5', at);
+      assert.ok(Math.abs(cost - 0.3367538) < 1e-7, `got ${cost}`);
+    });
+  });
 });
