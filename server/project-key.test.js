@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { projectKey, displayNames, localPath, TEMP_KEY } = require('./project-key');
+const { projectKey, displayNames, localPath, TEMP_KEY, COWORK_KEY } = require('./project-key');
 
 describe('projectKey', () => {
   const cases = [
@@ -48,6 +48,10 @@ describe('localPath', () => {
   it('returns home for ~', () => assert.equal(localPath('~', home), home));
   it('returns null when the directory is absent', () => assert.equal(localPath('workspace/missing', home), null));
   it('returns null for the temp bucket', () => assert.equal(localPath(TEMP_KEY, home), null));
+  it('returns null for the (cowork) key even if ~/(cowork) exists', () => {
+    fs.mkdirSync(path.join(home, '(cowork)'), { recursive: true });
+    assert.equal(localPath(COWORK_KEY, home), null);
+  });
   it('returns null when the key escapes home', () => assert.equal(localPath('../../etc', home), null));
   it('resolves a key with internal .. back into home', () =>
     assert.equal(localPath('workspace/app/../app', home), path.join(home, 'workspace', 'app')));

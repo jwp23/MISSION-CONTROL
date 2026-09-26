@@ -3,6 +3,8 @@ const os = require('node:os');
 const { resolveWithin } = require('./paths');
 
 const TEMP_KEY = '(temp)';
+// Cowork sessions started without an attached folder have no project of their own
+const COWORK_KEY = '(cowork)';
 // Home directories on the machines we aggregate: Linux and macOS layouts
 const HOME_RE = /^\/(?:home|Users)\/[^/]+(?=\/|$)/;
 // Worktree checkouts roll up into their repository
@@ -36,9 +38,9 @@ function displayNames(keys) {
  * Beads and session restore need a real local directory.
  */
 function localPath(key, homeDir = os.homedir()) {
-  if (key === TEMP_KEY) return null;
+  if (key === TEMP_KEY || key === COWORK_KEY) return null;
   const abs = resolveWithin(homeDir, key === '~' ? '.' : key);
   return abs && fs.existsSync(abs) ? abs : null;
 }
 
-module.exports = { projectKey, displayNames, localPath, TEMP_KEY };
+module.exports = { projectKey, displayNames, localPath, TEMP_KEY, COWORK_KEY };
