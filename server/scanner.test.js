@@ -1,4 +1,4 @@
-const { describe, it, before, after } = require('node:test');
+const { describe, it, before, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
@@ -759,5 +759,97 @@ describe('discoverSessions across sources', () => {
     const [s] = await scanner.discoverSessions([a], new Map());
     assert.equal(s.projectKey, '(temp)');
     assert.equal(s.projectName, '(temp)');
+  });
+});
+
+describe('discoverCoworkSessions', () => {
+  // Cowork layout: <account>/<org>/local_<id>-….json beside <org>/<id>/.claude/projects/session/<uuid>.jsonl
+  const META_ID = 'local_2215a08d-67b9-4a51-98e8-d105e5908cd0';
+  const TRANSCRIPT_ID = 'd700fd90-c9d8-4b94-84c2-2860e8022c1f';
+  let coworkDir, orgDir;
+
+  function writeTranscript() {
+    const sessionDir = path.join(orgDir, '2215a08d', '.claude', 'projects', 'session');
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const lines = [
+      makeUserEntry('Draft the quarterly report from the attached folder', { sessionId: TRANSCRIPT_ID }),
+      makeAssistantEntry('claude-sonnet-5', 10, 20, { sessionId: TRANSCRIPT_ID })
+    ];
+    fs.writeFileSync(path.join(sessionDir, `${TRANSCRIPT_ID}.jsonl`), lines.join('\n') + '\n');
+  }
+
+  function writeMeta(meta) {
+    const body = typeof meta === 'string' ? meta : JSON.stringify({ sessionId: META_ID, cliSessionId: TRANSCRIPT_ID, ...meta });
+    fs.writeFileSync(path.join(orgDir, `${META_ID}.json`), body);
+  }
+
+  const source = (machine = null) => ({ kind: 'cowork', machine, projectsDir: coworkDir });
+
+  beforeEach(() => {
+    coworkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-cowork-'));
+    orgDir = path.join(coworkDir, 'account-1', 'org-1');
+    fs.mkdirSync(orgDir, { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(coworkDir, { recursive: true, force: true }));
+
+  it('tags the session and takes its name and project from the metadata', async () => {
+    writeTranscript();
+    writeMeta({ title: 'Quarterly report', userSelectedFolders: ['/Users/joe/workspace/jwp23/reports'] });
+    const sessions = await scanner.discoverSessions([source()], new Map());
+    assert.equal(sessions.length, 1);
+    const s = sessions[0];
+    assert.equal(s.source, 'cowork');
+    assert.equal(s.sessionId, TRANSCRIPT_ID);
+    assert.equal(s.sessionName, 'Quarterly report');
+    assert.equal(s.cwd, '/Users/joe/workspace/jwp23/reports');
+    assert.equal(s.projectKey, 'workspace/jwp23/reports');
+    assert.equal(s.projectName, 'reports');
+    assert.equal(s.machine, null);
+    assert.equal(s.metrics.totalOutputTokens, 20);
+  });
+
+  it('carries the source machine name', async () => {
+    writeTranscript();
+    writeMeta({ title: 'Named machine', userSelectedFolders: [] });
+    const [s] = await scanner.discoverSessions([source('oryxp-9')], new Map());
+    assert.equal(s.machine, 'oryxp-9');
+  });
+
+  it('files a session with no attached folder under (cowork)', async () => {
+    writeTranscript();
+    writeMeta({ title: 'Scratch', userSelectedFolders: [] });
+    const [s] = await scanner.discoverSessions([source()], new Map());
+    assert.equal(s.cwd, null);
+    assert.equal(s.projectKey, '(cowork)');
+    assert.equal(s.projectName, '(cowork)');
+  });
+
+  it('skips a session whose metadata is unreadable and logs once', async () => {
+    writeTranscript();
+    writeMeta('{not json');
+    const errors = [];
+    const original = console.error;
+    console.error = (msg) => errors.push(msg);
+    try {
+      const sessions = await scanner.discoverSessions([source()], new Map());
+      assert.equal(sessions.length, 0);
+      assert.equal(errors.length, 1);
+      assert.match(errors[0], /Skipping Cowork session/);
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it('yields nothing when the metadata names a transcript folder that does not exist', async () => {
+    writeMeta({ title: 'Gone', userSelectedFolders: [] });
+    const sessions = await scanner.discoverSessions([source()], new Map());
+    assert.equal(sessions.length, 0);
+  });
+
+  it('yields nothing when the Cowork directory is missing', async () => {
+    const missing = { kind: 'cowork', machine: null, projectsDir: path.join(coworkDir, 'nope') };
+    const sessions = await scanner.discoverSessions([missing], new Map());
+    assert.equal(sessions.length, 0);
   });
 });
