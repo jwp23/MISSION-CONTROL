@@ -1,4 +1,4 @@
-const { describe, it } = require('node:test');
+const { describe, it, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { normalizeLitellm, appendIfChanged, resolvePricing, matchConfigPricing } = require('./pricing');
 
@@ -83,7 +83,13 @@ describe('init and refresh', () => {
   });
   it('refresh failure resolves false and keeps history', async () => {
     const failFetch = async () => { throw new Error('offline'); };
-    assert.equal(await refresh(failFetch), false);
+    const log = mock.method(console, 'log', () => {});
+    try {
+      assert.equal(await refresh(failFetch), false);
+      assert.deepEqual(log.mock.calls.map(c => c.arguments), [['pricing: using last known prices (offline)']]);
+    } finally {
+      log.mock.restore();
+    }
   });
   it('re-seeds and does not throw when the history file is corrupt', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pricing-corrupt-'));
@@ -91,14 +97,26 @@ describe('init and refresh', () => {
     const historyPath = path.join(dir, 'history.json');
     fs.writeFileSync(seedPath, JSON.stringify({ entries: [{ effectiveFrom: '2025-01-01', prices: { 'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } } }] }));
     fs.writeFileSync(historyPath, '{not valid json');
-    assert.doesNotThrow(() => init({ historyPath, seedPath }));
+    const log = mock.method(console, 'log', () => {});
+    try {
+      assert.doesNotThrow(() => init({ historyPath, seedPath }));
+      assert.deepEqual(log.mock.calls.map(c => c.arguments), [['pricing: history corrupt, re-seeded']]);
+    } finally {
+      log.mock.restore();
+    }
     assert.equal(getHistory().entries.length, 1);
     assert.equal(JSON.parse(fs.readFileSync(historyPath, 'utf-8')).entries.length, 1);
   });
   it('refresh resolves false instead of throwing when pre-init', async () => {
     _resetForTesting();
     const fakeFetch = async () => ({ ok: true, json: async () => ({ 'claude-opus-5': { litellm_provider: 'anthropic', input_cost_per_token: 6e-6, output_cost_per_token: 2.5e-5 } }) });
-    assert.equal(await refresh(fakeFetch), false);
+    const log = mock.method(console, 'log', () => {});
+    try {
+      assert.equal(await refresh(fakeFetch), false);
+      assert.deepEqual(log.mock.calls.map(c => c.arguments), [['pricing: using last known prices (pricing.init() not called)']]);
+    } finally {
+      log.mock.restore();
+    }
   });
 });
 
