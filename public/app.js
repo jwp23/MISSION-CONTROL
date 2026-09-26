@@ -597,7 +597,11 @@ function MirrorWarning({ duplicates }) {
   );
 }
 
-function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine, localSpend }) {
+function formatPercent(value) {
+  return value == null ? '–' : `${Math.round(value)}%`;
+}
+
+function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount, timeRange, onClearRange, beads, machines, selectedMachine, onSelectMachine, localSpend, planUsage }) {
   return (
     <div className="top-bar">
       <span className="top-bar-title">CC-MISSION-CONTROL</span>
@@ -622,6 +626,12 @@ function TopBar({ stats, searchQuery, onSearch, wipFilter, onToggleWip, wipCount
           <span className="stat-label">Multiplier</span>
           <span className="stat-value">{stats.multiplier || '-'}x</span>
         </span>
+        {planUsage && (
+          <span className="stat-item" title={`Claude plan limits used, as of ${new Date(planUsage.sampledAt).toLocaleString()}`}>
+            <span className="stat-label">Plan 5h / 7d</span>
+            <span className="stat-value">{formatPercent(planUsage.fiveHour)} / {formatPercent(planUsage.sevenDay)}</span>
+          </span>
+        )}
         {beads?.hasBeads && (
           <span className="stat-item money" title={beads.machine ? 'Spend on this machine ÷ beads closed in the local checkout' : '$/Bead = spend ÷ beads closed for the current scope and window'}>
             <span className="stat-label">{beadLabel(beads)}</span>
@@ -1188,6 +1198,7 @@ function App() {
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [machines, setMachines] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
+  const [planUsage, setPlanUsage] = useState(null);
 
   const localMachine = globalBeads?.machine ?? null;
 
@@ -1265,6 +1276,7 @@ function App() {
     load(`/api/machines${scopeQS('?', { machine: false })}`, setMachines, () => { if (!cancelled) setMachines([]); });
     load(`/api/beads${scopeQS('?', { machine: false })}`, setBeadsStats, () => { if (!cancelled) setBeadsStats(null); });
     load(`/api/beads${scopeQS('?', { project: false, machine: false })}`, setGlobalBeads, () => { if (!cancelled) setGlobalBeads(null); });
+    load('/api/plan-usage', setPlanUsage, () => { if (!cancelled) setPlanUsage(null); });
 
     return () => { cancelled = true; };
   }, [selectedProject, selectedMachine, timeRange.from, timeRange.to]);
@@ -1416,7 +1428,7 @@ function App() {
         wipFilter={wipFilter} onToggleWip={() => setWipFilter(f => !f)} wipCount={totalWipCount}
         timeRange={timeRange} onClearRange={() => setTimeRange(r => (r.from || r.to) ? { from: null, to: null } : r)} beads={globalBeads}
         machines={machines} selectedMachine={selectedMachine} onSelectMachine={(m) => { setSearchResults(null); setSelectedMachine(m); }}
-        localSpend={localStats?.totalCost} />
+        localSpend={localStats?.totalCost} planUsage={planUsage} />
       <MirrorWarning duplicates={duplicates} />
       <div className="main-layout">
         <Sidebar
