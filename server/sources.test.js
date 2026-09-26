@@ -22,7 +22,7 @@ function makeMirror(machines) {
 }
 
 function opts() {
-  return { configPath, homeDir, claudeDir, log };
+  return { configPath, homeDir, claudeDir, coworkDir: path.join(homeDir, 'cowork-absent'), log };
 }
 
 beforeEach(() => {
@@ -81,4 +81,42 @@ describe('resolveSources', () => {
       assert.match(warnings[0], /^\[sources\] agent-downlink mirror unavailable, using /);
     });
   }
+});
+
+describe('cowork source', () => {
+  it('is appended after the local source when the Cowork directory exists', () => {
+    const coworkDir = path.join(homeDir, 'cowork');
+    fs.mkdirSync(coworkDir, { recursive: true });
+    assert.deepEqual(resolveSources({ ...opts(), coworkDir }), {
+      sources: [
+        { machine: null, projectsDir: path.join(claudeDir, 'projects') },
+        { kind: 'cowork', machine: null, projectsDir: coworkDir }
+      ],
+      localMachine: null
+    });
+    assert.deepEqual(warnings, []);
+  });
+
+  it('carries the downlink machine name when a mirror is in use', () => {
+    const mirror = makeMirror(['oryxp-9']);
+    writeConfig(`machine = 'oryxp-9'\nmirror = '${mirror}'\n`);
+    const coworkDir = path.join(homeDir, 'cowork');
+    fs.mkdirSync(coworkDir, { recursive: true });
+    const { sources } = resolveSources({ ...opts(), coworkDir });
+    assert.deepEqual(sources.at(-1), { kind: 'cowork', machine: 'oryxp-9', projectsDir: coworkDir });
+  });
+
+  it('is still appended when the downlink config is broken', () => {
+    writeConfig('machine = [unterminated\n');
+    const coworkDir = path.join(homeDir, 'cowork');
+    fs.mkdirSync(coworkDir, { recursive: true });
+    const { sources, localMachine } = resolveSources({ ...opts(), coworkDir });
+    assert.equal(localMachine, null);
+    assert.deepEqual(sources.at(-1), { kind: 'cowork', machine: null, projectsDir: coworkDir });
+    assert.equal(warnings.length, 1);
+  });
+
+  it('adds nothing when the Cowork directory does not exist', () => {
+    assert.deepEqual(resolveSources(opts()), localOnly());
+  });
 });

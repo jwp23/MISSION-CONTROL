@@ -731,7 +731,7 @@ function StatusDot({ sessionId, status, onChange }) {
   );
 }
 
-function EditableSummary({ sessionId, sessionName, summary, onSave }) {
+function EditableSummary({ sessionId, sessionName, summary, source, onSave }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(summary || '');
 
@@ -768,6 +768,7 @@ function EditableSummary({ sessionId, sessionName, summary, onSave }) {
       onDoubleClick={() => { setValue(summary || ''); setEditing(true); }}
       title={sessionName ? `${sessionName}\n\nDouble-click to edit summary` : 'Double-click to edit'}
     >
+      {source === 'cowork' && <span className="source-pill">COWORK</span>}
       {sessionName && <span className="summary-name">{sessionName}</span>}
       {sessionName && summary && <span className="summary-sep"> · </span>}
       {summary || (sessionName ? '' : '(no summary)')}
@@ -836,7 +837,8 @@ const COLUMNS = [
 
         const localPath = ctx.localPathFor(s);
         const isLocal = s.machine === null || s.machine === ctx.localMachine;
-        if (!isLocal || !localPath) return null;
+        // Cowork ran inside the Desktop app's VM; there is nothing to resume in a terminal
+        if (!isLocal || !localPath || s.source === 'cowork') return null;
         return <button
           type="button"
           className={`restore-btn ${isRestoring ? 'restoring' : ''}`}
@@ -861,7 +863,7 @@ const COLUMNS = [
   },
   {
     key: 'summary', label: 'Summary / Session Name', className: 'col-summary', prio: 1, sortField: 'summary',
-    render: (s, ctx) => <EditableSummary sessionId={s.sessionId} sessionName={s.sessionName} summary={s.summary} onSave={ctx.onSummaryEdit} />
+    render: (s, ctx) => <EditableSummary sessionId={s.sessionId} sessionName={s.sessionName} summary={s.summary} source={s.source} onSave={ctx.onSummaryEdit} />
   },
   {
     key: 'model', label: 'Model', className: 'col-model', prio: 2, sortField: 'primaryModel',

@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const config = require('./config');
 const parser = require('./parser');
-const { projectKey, displayNames } = require('./project-key');
+const { projectKey, displayNames, COWORK_KEY } = require('./project-key');
 const { resolveWithin } = require('./paths');
 
 /**
@@ -267,12 +267,88 @@ async function getProjectSessions(project, historyIndex) {
 }
 
 /**
+ * Cowork keeps one folder per session under <account>/<org>/: a Claude Code
+ * transcript at <id>/.claude/projects/session/ and a sibling local_<id>-….json
+ * holding the title and attached folders. <id> is the first eight characters
+ * of that file's sessionId after the local_ prefix.
+ */
+async function discoverCoworkSessions(source) {
+  const sessions = [];
+  for (const orgDir of coworkOrgDirs(source.projectsDir)) {
+    for (const entry of fs.readdirSync(orgDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.startsWith('local_') || !entry.name.endsWith('.json')) continue;
+      const meta = readCoworkMeta(path.join(orgDir, entry.name));
+      if (!meta) continue;
+      const id = meta.sessionId.slice('local_'.length, 'local_'.length + 8);
+      const project = {
+        machine: source.machine,
+        projectsDir: source.projectsDir,
+        encodedPath: null,
+        sessionsDir: path.join(orgDir, id, '.claude', 'projects', 'session')
+      };
+      for (const parsed of await getProjectSessions(project, {})) {
+        applyCoworkMeta(parsed, meta);
+        sessions.push(parsed);
+      }
+    }
+  }
+  return sessions;
+}
+
+function coworkOrgDirs(root) {
+  if (!fs.existsSync(root)) return [];
+  return subdirectories(root).flatMap(subdirectories);
+}
+
+function subdirectories(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter(e => e.isDirectory())
+    .map(e => path.join(dir, e.name));
+}
+
+/**
+ * A session's Cowork metadata, or null (logged once) when the file is unusable.
+ */
+function readCoworkMeta(filePath) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (typeof meta.sessionId !== 'string' || !meta.sessionId.startsWith('local_')) {
+      throw new Error('sessionId missing');
+    }
+    return meta;
+  } catch (err) {
+    console.error(`Skipping Cowork session ${filePath}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Overlay what the transcript cannot say: Cowork runs in a VM, so the
+ * project comes from the attached folder and the name from the title.
+ * getProjectSessions returns cached objects, so this runs again on them;
+ * plain assignments keep that idempotent.
+ */
+function applyCoworkMeta(parsed, meta) {
+  parsed.source = 'cowork';
+  if (!parsed.sessionName && typeof meta.title === 'string' && meta.title.trim()) {
+    parsed.sessionName = meta.title.trim();
+  }
+  const folder = Array.isArray(meta.userSelectedFolders) ? meta.userSelectedFolders[0] : undefined;
+  parsed.cwd = typeof folder === 'string' ? folder : null;
+  parsed.projectKey = parsed.cwd ? projectKey(parsed.cwd) : COWORK_KEY;
+}
+
+/**
  * Parse every session from every source. Sessions carry their machine and
  * cross-machine projectKey; projectName is chosen so collisions stay distinct.
  */
 async function discoverSessions(sources, historyIndexes) {
   const sessions = [];
   for (const source of sources) {
+    if (source.kind === 'cowork') {
+      sessions.push(...await discoverCoworkSessions(source));
+      continue;
+    }
     if (!fs.existsSync(source.projectsDir)) continue;
     const historyIndex = historyIndexes.get(source.machine) || {};
     for (const entry of fs.readdirSync(source.projectsDir, { withFileTypes: true })) {
@@ -440,6 +516,7 @@ module.exports = {
   getActiveSessions,
   getProjectSessions,
   discoverSessions,
+  discoverCoworkSessions,
   dedupeBySessionId,
   aggregateSessions,
   sessionCache

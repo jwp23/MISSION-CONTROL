@@ -20,6 +20,7 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 ### Added
 
 - Multi-machine sessions via the agent-downlink mirror: machine picker, Machine column, By Machine rollup, `$/Bead (this machine)`.
+- Claude Desktop Cowork sessions (macOS) are read from `~/Library/Application Support/Claude/local-agent-mode-sessions` as a second source: tokens and cost count toward totals, the session title is the name, the first attached folder is the project (else `(cowork)`), rows carry a `COWORK` tag and no LAUNCH button (ADR-003).
 
 ### Fixed
 

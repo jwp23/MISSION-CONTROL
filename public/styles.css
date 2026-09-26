@@ -597,6 +597,14 @@ body {
   font-weight: 600;
 }
 
+.source-pill {
+  color: var(--blue);
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin-right: 6px;
+}
+
 .summary-sep {
   color: var(--text-dim);
 }
