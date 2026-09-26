@@ -7,6 +7,7 @@ const restore = require('./restore');
 const sessionState = require('./session-state');
 const timerange = require('./timerange');
 const beads = require('./beads');
+const planUsage = require('./plan-usage');
 
 const app = express();
 app.disable('x-powered-by');
@@ -30,7 +31,7 @@ const scope = require('./scope');
 const historyIndexes = new Map();
 async function loadHistoryIndexes(list) {
   for (const src of list) {
-    if (historyIndexes.has(src.machine)) continue;
+    if (src.kind === 'cowork' || historyIndexes.has(src.machine)) continue;
     const historyPath = path.join(path.dirname(src.projectsDir), 'history.jsonl');
     try {
       historyIndexes.set(src.machine, await parser.buildHistoryIndex(historyPath));
@@ -97,7 +98,8 @@ function sessionRow(s) {
     statusNote: ss ? ss.note : null,
     machine: s.machine,
     projectKey: s.projectKey,
-    projectName: s.projectName
+    projectName: s.projectName,
+    source: s.source
   };
 }
 
@@ -275,11 +277,22 @@ app.get('/api/active', (req, res) => {
   }
 });
 
+// Claude Desktop's latest rate-limit reading; null when the app has none
+app.get('/api/plan-usage', (req, res) => {
+  res.json(planUsage.readPlanUsage());
+});
+
 // Restore a session in the configured terminal
 app.post('/api/restore/:sessionId', async (req, res) => {
   try {
     const { cwd } = req.body;
     if (!cwd) return res.status(400).json({ error: 'cwd is required' });
+
+    // Cowork sessions ran inside the Desktop app's VM; there is no CLI resume for them
+    const session = cachedSessions().find(s => s.sessionId === req.params.sessionId);
+    if (session?.source === 'cowork') {
+      return res.status(400).json({ error: 'Cowork sessions cannot be resumed from the dashboard' });
+    }
 
     const terminal = config.get().terminal || 'ghostty';
     const result = await restore.restoreSession(req.params.sessionId, cwd, terminal);

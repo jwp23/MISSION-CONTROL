@@ -7,6 +7,9 @@ const { resolveWithin } = require('./paths');
 
 const DOWNLINK_CONFIG = path.join(os.homedir(), '.config', 'agent-downlink', 'config.toml');
 
+// Claude Desktop keeps Cowork transcripts here, outside ~/.claude (macOS only)
+const COWORK_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions');
+
 function localSource(claudeDir) {
   return { machine: null, projectsDir: path.join(claudeDir, 'projects') };
 }
@@ -43,15 +46,19 @@ function mirrorSources(mirror) {
 }
 
 /**
- * Resolve where session transcripts are read from.
- * With agent-downlink: every machine in its mirror, this one included.
- * Otherwise, or on any failure: the local Claude directory only.
+ * One Cowork source for this machine when the Claude Desktop directory
+ * exists. Cowork sessions ran here, so they carry the local machine name.
  */
-function resolveSources(opts = {}) {
-  const configPath = opts.configPath || DOWNLINK_CONFIG;
-  const homeDir = opts.homeDir || os.homedir();
-  const claudeDir = opts.claudeDir || config.get().claudeDir;
-  const log = opts.log || console.warn;
+function coworkSource(coworkDir, machine) {
+  if (!fs.existsSync(coworkDir)) return [];
+  return [{ kind: 'cowork', machine, projectsDir: coworkDir }];
+}
+
+/**
+ * Claude Code sources: every machine in the agent-downlink mirror, or on
+ * any failure the local Claude directory only.
+ */
+function claudeCodeSources({ configPath, homeDir, claudeDir, log }) {
   try {
     const downlink = readDownlinkConfig(configPath, homeDir);
     if (!downlink) return { sources: [localSource(claudeDir)], localMachine: null };
@@ -60,6 +67,21 @@ function resolveSources(opts = {}) {
     log(`[sources] agent-downlink mirror unavailable, using ${claudeDir}: ${err.message}`);
     return { sources: [localSource(claudeDir)], localMachine: null };
   }
+}
+
+/**
+ * Resolve where session transcripts are read from: Claude Code sources
+ * first, then this machine's Cowork directory when it exists.
+ */
+function resolveSources(opts = {}) {
+  const configPath = opts.configPath || DOWNLINK_CONFIG;
+  const homeDir = opts.homeDir || os.homedir();
+  const claudeDir = opts.claudeDir || config.get().claudeDir;
+  const coworkDir = opts.coworkDir || COWORK_DIR;
+  const log = opts.log || console.warn;
+  const resolved = claudeCodeSources({ configPath, homeDir, claudeDir, log });
+  resolved.sources.push(...coworkSource(coworkDir, resolved.localMachine));
+  return resolved;
 }
 
 module.exports = { resolveSources };

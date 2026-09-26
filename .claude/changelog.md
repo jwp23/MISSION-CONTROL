@@ -16,9 +16,12 @@ Purpose: Running log of all notable changes, features, and workflow updates.
 ### Added
 
 - Multi-machine sessions via the agent-downlink mirror: machine picker, Machine column, By Machine rollup, `$/Bead (this machine)`.
+- Claude Desktop Cowork sessions (macOS) are read from `~/Library/Application Support/Claude/local-agent-mode-sessions` as a second source: tokens and cost count toward totals, the session title is the name, the first attached folder is the project (else `(cowork)`), rows carry a `COWORK` tag and no LAUNCH button (ADR-003).
+- Top bar shows Claude plan usage (five-hour and seven-day limits) from Claude Desktop's `plan-usage-history.json`; hidden when the app has recorded nothing.
 
 ### Fixed
 
+- One-hour prompt-cache writes were billed at the five-minute rate, undercounting every session that used the one-hour TTL (all Cowork sessions and hundreds of Claude Code ones). Cache writes are now split by TTL from `usage.cache_creation`; one-hour tokens bill at 2× base input. Totals rise on upgrade.
 - Cross-machine duplicate sessions are surfaced instead of silently dropped (MISSION-CONTROL-5ha). Precedence is now decided once per source — this machine first, then the machine with the most recent session, then by name — so a copied transcript history no longer wins ties and misattributes another machine's spend. A banner names the machine holding the copy and points at the agent-downlink mirror; `GET /api/duplicates` exposes the same report.
 - SonarQube quality gate cleanup for multi-machine sources (PR #6): 3× S8476 same-origin percent-encoded client URLs in `public/app.js`, 1× S5145 log message built from `agent-downlink` config content read from the local filesystem (same trust boundary as the process) — all Accepted-with-rationale in SonarCloud, consistent with the PR #4 precedent below.
 - SonarQube quality gate cleanup — all 107 open findings + 1 security hotspot resolved (PR #4)
